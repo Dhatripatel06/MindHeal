@@ -26,8 +26,8 @@ class tfliteService {
 
       // Try to load the model
       try {
-        _interpreter = await Interpreter.fromAsset(
-            'assets/models/emotion_model.tflite');
+        _interpreter =
+            await Interpreter.fromAsset('assets/models/emotion_model.tflite');
 
         // Validate model input/output tensors
         final inputTensors = _interpreter!.getInputTensors();
@@ -102,21 +102,20 @@ class tfliteService {
         throw Exception('Could not decode image');
       }
 
+      // Resize image to model input size (224x224 for emotion_model.tflite)
+      final resizedImage = img.copyResize(image,
+          width: 224, height: 224, interpolation: img.Interpolation.cubic);
 
-    // Resize image to model input size (224x224 for emotion_model.tflite)
-    final resizedImage = img.copyResize(image,
-      width: 224, height: 224, interpolation: img.Interpolation.cubic);
+      // Preprocess to RGB and normalize with ImageNet mean/std
+      final input = _preprocessImage(resizedImage);
 
-    // Preprocess to RGB and normalize with ImageNet mean/std
-    final input = _preprocessImage(resizedImage);
+      // Run inference
+      var output = List.filled(7, 0.0).reshape([1, 7]);
+      _interpreter!.run(input, output);
 
-    // Run inference
-    var output = List.filled(7, 0.0).reshape([1, 7]);
-    _interpreter!.run(input, output);
-
-    // No softmax, model output is already probabilities
-    final predictions = output[0].cast<double>();
-    final result = _processResults(predictions);
+      // No softmax, model output is already probabilities
+      final predictions = output[0].cast<double>();
+      final result = _processResults(predictions);
 
       print(
           '✅ Emotion detection completed - Primary: ${result['primaryEmotion']} (${(result['confidence'] * 100).toStringAsFixed(1)}%)');
@@ -142,9 +141,12 @@ class tfliteService {
           (x) => List.generate(3, (c) {
             final pixel = image.getPixel(x, y);
             double value = 0.0;
-            if (c == 0) value = img.getRed(pixel) / 255.0;
-            else if (c == 1) value = img.getGreen(pixel) / 255.0;
-            else value = img.getBlue(pixel) / 255.0;
+            if (c == 0)
+              value = img.getRed(pixel) / 255.0;
+            else if (c == 1)
+              value = img.getGreen(pixel) / 255.0;
+            else
+              value = img.getBlue(pixel) / 255.0;
             return (value - mean[c]) / std[c];
           }),
         ),
