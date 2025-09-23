@@ -49,12 +49,12 @@ void main() {
       expect(fallbackResult, isA<Map<String, dynamic>>());
       expect(fallbackResult['primaryEmotion'], isA<String>());
       expect(fallbackResult['confidence'], isA<double>());
-      expect(fallbackResult['emotionConfidences'], isA<Map<String, double>>());
-      expect(fallbackResult['timestamp'], isA<String>());
+      expect(fallbackResult.emotionConfidences, isA<Map<String, double>>());
+      expect(fallbackResult.timestamp, isA<String>());
 
       // Check that all emotions are represented in confidence map
       final confidences =
-          fallbackResult['emotionConfidences'] as Map<String, double>;
+          fallbackResult.emotionConfidences as Map<String, double>;
       expect(confidences.keys.length, equals(7));
 
       // Check that confidence values are between 0 and 1

@@ -56,7 +56,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _fabScaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _fabAnimationController, curve: Curves.elasticOut),
+      CurvedAnimation(
+          parent: _fabAnimationController, curve: Curves.elasticOut),
     );
     _fabAnimationController.forward();
   }
@@ -81,8 +82,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
               _buildCustomAppBar(),
               _buildMainContent(provider),
               _buildActionButtons(provider),
-              if (!provider.isServiceInitialized)
-                _buildLoadingOverlay(),
+              if (!provider.isServiceInitialized) _buildLoadingOverlay(),
             ],
           );
         },
@@ -373,8 +373,9 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: (provider.faceDetected ? Colors.green : Colors.orange)
-                        .withOpacity(0.3),
+                    color:
+                        (provider.faceDetected ? Colors.green : Colors.orange)
+                            .withOpacity(0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -446,7 +447,9 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     return Center(
       child: FadeTransition(
         opacity: _fadeAnimation,
-        child: _buildResultCard(provider.lastResult!),
+        child: SingleChildScrollView(
+          child: _buildResultCard(provider.lastResult!),
+        ),
       ),
     );
   }
@@ -591,15 +594,19 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
               icon: Icons.camera_alt,
               label: 'Camera',
               color: Colors.blue,
-              onPressed: (provider.isAnalyzing || !provider.isServiceInitialized) 
-                  ? null : _captureImage,
+              onPressed:
+                  (provider.isAnalyzing || !provider.isServiceInitialized)
+                      ? null
+                      : _captureImage,
             ),
             _buildActionButton(
               icon: Icons.photo_library,
               label: 'Gallery',
               color: Colors.green,
-              onPressed: (provider.isAnalyzing || !provider.isServiceInitialized) 
-                  ? null : _pickFromGallery,
+              onPressed:
+                  (provider.isAnalyzing || !provider.isServiceInitialized)
+                      ? null
+                      : _pickFromGallery,
             ),
           ],
         ),
@@ -616,13 +623,15 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
-        boxShadow: onPressed != null ? [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ] : null,
+        boxShadow: onPressed != null
+            ? [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
       child: FloatingActionButton.extended(
         heroTag: label.toLowerCase(),
@@ -677,13 +686,12 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
   Future<void> _processSelectedImage(File imageFile) async {
     final provider = context.read<ImageDetectionProvider>();
     await provider.setSelectedImage(imageFile);
-    
+
     // Validate image has face (optional - model can work without face detection)
     final isValidImage = await _validateImageWithFace(imageFile);
     if (!isValidImage) {
       _showWarningDialog(
-        'No human face detected in the image.\nThe AI model will still attempt to analyze emotions, but results may be less accurate.'
-      );
+          'No human face detected in the image.\nThe AI model will still attempt to analyze emotions, but results may be less accurate.');
     }
 
     // Analyze with TFLite model
@@ -697,10 +705,10 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     try {
       final inputImage = InputImage.fromFile(imageFile);
       final List<Face> faces = await _faceDetector.processImage(inputImage);
-      
+
       final provider = context.read<ImageDetectionProvider>();
       provider.setDetectedFaces(faces);
-      
+
       return faces.isNotEmpty;
     } catch (e) {
       debugPrint('Face detection error: $e');
@@ -797,7 +805,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
+                        Icon(Icons.info_outline,
+                            color: Colors.blue[600], size: 16),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -929,7 +938,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 color: Colors.orange.shade50,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.warning_amber_outlined, color: Colors.orange),
+              child: const Icon(Icons.warning_amber_outlined,
+                  color: Colors.orange),
             ),
             const SizedBox(width: 12),
             const Text('Warning'),
@@ -1054,7 +1064,8 @@ class PerfectFaceDetectionPainter extends CustomPainter {
             landmark.position.x.toDouble() * scale + offsetX,
             landmark.position.y.toDouble() * scale + offsetY,
           );
-          canvas.drawCircle(scaledOffset.translate(1, 1), 6, shadowPaint..style = PaintingStyle.fill);
+          canvas.drawCircle(scaledOffset.translate(1, 1), 6,
+              shadowPaint..style = PaintingStyle.fill);
           canvas.drawCircle(scaledOffset, 5, paint);
         }
       }
@@ -1074,12 +1085,30 @@ class PerfectFaceDetectionPainter extends CustomPainter {
     final corners = [
       [Offset(rect.left, rect.top), Offset(rect.left + cornerLength, rect.top)],
       [Offset(rect.left, rect.top), Offset(rect.left, rect.top + cornerLength)],
-      [Offset(rect.right, rect.top), Offset(rect.right - cornerLength, rect.top)],
-      [Offset(rect.right, rect.top), Offset(rect.right, rect.top + cornerLength)],
-      [Offset(rect.left, rect.bottom), Offset(rect.left + cornerLength, rect.bottom)],
-      [Offset(rect.left, rect.bottom), Offset(rect.left, rect.bottom - cornerLength)],
-      [Offset(rect.right, rect.bottom), Offset(rect.right - cornerLength, rect.bottom)],
-      [Offset(rect.right, rect.bottom), Offset(rect.right, rect.bottom - cornerLength)],
+      [
+        Offset(rect.right, rect.top),
+        Offset(rect.right - cornerLength, rect.top)
+      ],
+      [
+        Offset(rect.right, rect.top),
+        Offset(rect.right, rect.top + cornerLength)
+      ],
+      [
+        Offset(rect.left, rect.bottom),
+        Offset(rect.left + cornerLength, rect.bottom)
+      ],
+      [
+        Offset(rect.left, rect.bottom),
+        Offset(rect.left, rect.bottom - cornerLength)
+      ],
+      [
+        Offset(rect.right, rect.bottom),
+        Offset(rect.right - cornerLength, rect.bottom)
+      ],
+      [
+        Offset(rect.right, rect.bottom),
+        Offset(rect.right, rect.bottom - cornerLength)
+      ],
     ];
 
     for (final corner in corners) {
