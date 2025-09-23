@@ -3,8 +3,9 @@ import 'dart:ui' as ui;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import '../../data/models/emotion_result.dart';
-import '../../data/services/tflite_service.dart';
+import 'package:image/image.dart' as img;
+import '../../data/services/tflite_service.dart'
+    show EmotionRecognitionService, EmotionResult;
 
 class ImageDetectionProvider extends ChangeNotifier {
   File? _selectedImageFile;
@@ -16,12 +17,12 @@ class ImageDetectionProvider extends ChangeNotifier {
   Map<String, double> _emotions = {};
   String? _errorMessage;
   Size _imageSize = Size.zero;
-  
-  late tfliteService _tfliteService;
+
+  late EmotionRecognitionService _tfliteService;
   bool _isServiceInitialized = false;
 
   ImageDetectionProvider() {
-    _tfliteService = tfliteService();
+    _tfliteService = EmotionRecognitionService();
     _initializeService();
   }
 
@@ -40,14 +41,10 @@ class ImageDetectionProvider extends ChangeNotifier {
   Future<void> _initializeService() async {
     try {
       print('🔧 Initializing TFLite service...');
-      _isServiceInitialized = await tfliteService.initialize();
-      if (_isServiceInitialized) {
-        print('✅ TFLite service ready for emotion detection');
-        _errorMessage = null;
-      } else {
-        print('❌ Failed to initialize TFLite service');
-        _errorMessage = 'Failed to initialize emotion detection model';
-      }
+      await _tfliteService.initialize();
+      _isServiceInitialized = true;
+      print('✅ TFLite service ready for emotion detection');
+      _errorMessage = null;
       notifyListeners();
     } catch (e) {
       print('❌ Error initializing TFLite service: $e');
@@ -61,20 +58,21 @@ class ImageDetectionProvider extends ChangeNotifier {
   Future<void> setSelectedImage(File imageFile) async {
     _selectedImageFile = imageFile;
     _errorMessage = null;
-    
+
     try {
       final bytes = await imageFile.readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       _uiImage?.dispose();
       _uiImage = frame.image;
-      _imageSize = Size(_uiImage!.width.toDouble(), _uiImage!.height.toDouble());
+      _imageSize =
+          Size(_uiImage!.width.toDouble(), _uiImage!.height.toDouble());
       print('📷 Image loaded: ${_imageSize.width}x${_imageSize.height}');
     } catch (e) {
       print('❌ Error loading UI image: $e');
       _errorMessage = 'Failed to load image';
     }
-    
+
     notifyListeners();
   }
 
@@ -105,10 +103,10 @@ class ImageDetectionProvider extends ChangeNotifier {
     if (!_isServiceInitialized) {
       _errorMessage = 'Emotion detection model not ready. Please wait...';
       notifyListeners();
-      
+
       // Try to reinitialize
       await _initializeService();
-      
+
       if (!_isServiceInitialized) {
         _errorMessage = 'Failed to initialize model. Using demo mode.';
         final fallbackResult = _getFallbackResult();
@@ -118,23 +116,16 @@ class ImageDetectionProvider extends ChangeNotifier {
     }
 
     setAnalyzing(true);
-    
+
     try {
       print('🤖 Starting TFLite emotion analysis...');
-      final result = await tfliteService.analyzeImage(imageFile);
-      
-      // ignore: unnecessary_null_comparison
-      if (result != null) {
-        setResult(result as EmotionResult);
-        return result;
-      } else {
-        _errorMessage = 'Failed to analyze emotions - using demo results';
-        // Fallback to demo result for testing
-        final fallbackResult = _getFallbackResult();
-        setResult(fallbackResult);
-        return fallbackResult;
-      }
-      
+      // Convert File to img.Image
+      final bytes = await imageFile.readAsBytes();
+      final img.Image? image = img.decodeImage(bytes);
+      if (image == null) throw Exception('Could not decode image');
+      final result = await _tfliteService.analyzeEmotion(image);
+      setResult(result);
+      return result;
     } catch (e) {
       print('❌ Error in TFLite analysis: $e');
       _errorMessage = 'Analysis error: $e';
@@ -154,25 +145,25 @@ class ImageDetectionProvider extends ChangeNotifier {
   // Fallback emotion analysis for testing
   EmotionResult _getFallbackResult() {
     final emotions = <String, double>{
-      'happy': 0.35 + (DateTime.now().millisecond % 30) / 100,
+      'happiness': 0.35 + (DateTime.now().millisecond % 30) / 100,
       'surprise': 0.15 + (DateTime.now().millisecond % 20) / 100,
-      'angry': 0.10 + (DateTime.now().millisecond % 15) / 100,
-      'sad': 0.15 + (DateTime.now().millisecond % 25) / 100,
+      'anger': 0.10 + (DateTime.now().millisecond % 15) / 100,
+      'sadness': 0.15 + (DateTime.now().millisecond % 25) / 100,
       'disgust': 0.05 + (DateTime.now().millisecond % 10) / 100,
       'fear': 0.10 + (DateTime.now().millisecond % 15) / 100,
       'neutral': 0.10 + (DateTime.now().millisecond % 15) / 100,
     };
 
-    final dominantEmotion = emotions.entries.reduce(
-      (a, b) => a.value > b.value ? a : b
-    );
+    final dominantEmotion =
+        emotions.entries.reduce((a, b) => a.value > b.value ? a : b);
 
     return EmotionResult(
-      dominantEmotion: dominantEmotion.key,
+      emotion: dominantEmotion.key,
       confidence: dominantEmotion.value,
+      confidenceLevel: 'medium',
       allEmotions: emotions,
+      topPredictions: [],
       timestamp: DateTime.now(),
-      analysisType: 'demo_fallback',
     );
   }
 
@@ -194,7 +185,7 @@ class ImageDetectionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _uiImage?.dispose();
-    tfliteService.dispose();
+    _tfliteService.dispose();
     super.dispose();
   }
 }

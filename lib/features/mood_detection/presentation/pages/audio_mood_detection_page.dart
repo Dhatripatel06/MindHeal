@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../data/models/emotion_result.dart';
+import '../../data/services/tflite_service.dart' show EmotionResult;
 import '../providers/audio_detection_provider.dart';
 import '../widgets/waveform_visualizer.dart';
 import '../widgets/emotion_confidence_bar.dart';
@@ -276,17 +276,17 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _getEmotionColor(result.dominantEmotion).withOpacity(0.1),
+            color: _getEmotionColor(result.emotion).withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: _getEmotionColor(result.dominantEmotion).withOpacity(0.3),
+              color: _getEmotionColor(result.emotion).withOpacity(0.3),
             ),
           ),
           child: Row(
             children: [
               Icon(
-                _getEmotionIcon(result.dominantEmotion),
-                color: _getEmotionColor(result.dominantEmotion),
+                _getEmotionIcon(result.emotion),
+                color: _getEmotionColor(result.emotion),
                 size: 32,
               ),
               const SizedBox(width: 16),
@@ -295,11 +295,11 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      result.dominantEmotion.toUpperCase(),
+                      result.emotion.toUpperCase(),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: _getEmotionColor(result.dominantEmotion),
+                        color: _getEmotionColor(result.emotion),  
                       ),
                     ),
                     Text(

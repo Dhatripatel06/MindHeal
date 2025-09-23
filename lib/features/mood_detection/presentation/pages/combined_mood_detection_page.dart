@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
-import '../../data/models/emotion_result.dart';
+import '../../data/services/tflite_service.dart' show EmotionResult;
 import '../providers/combined_detection_provider.dart';
 import '../widgets/waveform_visualizer.dart';
 import '../widgets/emotion_confidence_bar.dart';
@@ -310,11 +310,11 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _getEmotionColor(result.dominantEmotion),
+                  color: _getEmotionColor(result.emotion),        
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  _getEmotionIcon(result.dominantEmotion),
+                  _getEmotionIcon(result.emotion),
                   color: Colors.white,
                   size: 24,
                 ),
@@ -325,11 +325,11 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      result.dominantEmotion.toUpperCase(),
+                      result.emotion.toUpperCase(),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: _getEmotionColor(result.dominantEmotion),
+                        color: _getEmotionColor(result.emotion),
                       ),
                     ),
                     Text(
@@ -344,7 +344,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                       value: result.confidence,
                       backgroundColor: Colors.grey[300],
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        _getEmotionColor(result.dominantEmotion),
+                        _getEmotionColor(result.emotion),
                       ),
                     ),
                   ],
@@ -495,7 +495,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
           ),
           const SizedBox(height: 8),
           Text(
-            result.dominantEmotion,
+            result.emotion,
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,

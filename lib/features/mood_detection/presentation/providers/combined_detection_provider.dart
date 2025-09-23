@@ -1,15 +1,14 @@
 import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import '../../data/models/emotion_result.dart';
+import '../../data/services/tflite_service.dart' show EmotionResult;
 import 'image_detection_provider.dart';
 import 'audio_detection_provider.dart';
 
 class CombinedDetectionProvider extends ChangeNotifier {
   final ImageDetectionProvider _imageProvider = ImageDetectionProvider();
   final AudioDetectionProvider _audioProvider = AudioDetectionProvider();
-  
+
   bool _isAnalyzing = false;
   bool _isVisualEnabled = true;
   bool _isAudioEnabled = true;
@@ -29,12 +28,11 @@ class CombinedDetectionProvider extends ChangeNotifier {
   EmotionResult? get lastAudioResult => _audioProvider.lastResult;
   double get imageConfidence => _imageConfidence;
   double get audioConfidence => _audioConfidence;
-  
+
   // ✅ FIXED: Convert List<Face> to List<Rect>
-  List<Rect> get detectedFaces => _imageProvider.detectedFaces
-      .map((face) => face.boundingBox)
-      .toList();
-  
+  List<Rect> get detectedFaces =>
+      _imageProvider.detectedFaces.map((face) => face.boundingBox).toList();
+
   Map<String, double> get imageEmotions => _imageProvider.emotions;
   List<double> get audioData => _audioProvider.audioData;
 
@@ -59,7 +57,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
 
   Future<void> stopAnalysis() async {
     _isAnalyzing = false;
-    
+
     try {
       if (_audioProvider.isRecording) {
         await _audioProvider.stopRecording();
@@ -67,9 +65,9 @@ class CombinedDetectionProvider extends ChangeNotifier {
           await _audioProvider.analyzeLastRecording();
         }
       }
-      
-      if (_isFusionEnabled && 
-          _imageProvider.lastResult != null && 
+
+      if (_isFusionEnabled &&
+          _imageProvider.lastResult != null &&
           _audioProvider.lastResult != null) {
         _performFusion();
       }
@@ -93,22 +91,22 @@ class CombinedDetectionProvider extends ChangeNotifier {
     if (_isVisualEnabled) {
       _imageConfidence = 0.8 + (DateTime.now().millisecond % 100) / 500;
     }
-    
+
     if (_isAudioEnabled && _audioProvider.isRecording) {
       _audioConfidence = 0.7 + (DateTime.now().millisecond % 100) / 500;
     }
-    
+
     if (_isFusionEnabled && _imageConfidence > 0 && _audioConfidence > 0) {
       _performFusion();
     }
-    
+
     notifyListeners();
   }
 
   void _performFusion() {
     final imageResult = _imageProvider.lastResult;
     final audioResult = _audioProvider.lastResult;
-    
+
     if (imageResult == null || audioResult == null) return;
 
     final fusedEmotions = <String, double>{};
@@ -119,20 +117,21 @@ class CombinedDetectionProvider extends ChangeNotifier {
     for (final emotion in allEmotions) {
       final imageConfidence = imageResult.allEmotions[emotion] ?? 0.0;
       final audioConfidence = audioResult.allEmotions[emotion] ?? 0.0;
-      
+
       final fusedConfidence = (imageConfidence * 0.6) + (audioConfidence * 0.4);
       fusedEmotions[emotion] = fusedConfidence;
     }
 
-    final dominantEmotion = fusedEmotions.entries
-        .reduce((a, b) => a.value > b.value ? a : b);
+    final dominantEmotion =
+        fusedEmotions.entries.reduce((a, b) => a.value > b.value ? a : b);
 
     _fusedResult = EmotionResult(
-      dominantEmotion: dominantEmotion.key,
+      emotion: dominantEmotion.key,
       confidence: dominantEmotion.value,
+      confidenceLevel: 'medium',
       allEmotions: fusedEmotions,
+      topPredictions: [],
       timestamp: DateTime.now(),
-      analysisType: 'combined',
     );
 
     notifyListeners();

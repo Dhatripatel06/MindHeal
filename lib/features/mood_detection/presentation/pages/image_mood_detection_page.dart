@@ -6,7 +6,341 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:provider/provider.dart';
 import '../providers/image_detection_provider.dart';
-import '../../data/models/emotion_result.dart';
+import '../../data/services/tflite_service.dart' show EmotionResult;
+
+// --- Emotion Insights Modal ---
+class EmotionInsightsModal extends StatelessWidget {
+  final EmotionResult? currentEmotion;
+  final List<String> recommendations;
+  final String moodTrend;
+  final Map<String, int> emotionFrequency;
+
+  const EmotionInsightsModal({
+    Key? key,
+    this.currentEmotion,
+    required this.recommendations,
+    required this.moodTrend,
+    required this.emotionFrequency,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Title
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Icon(Icons.insights, color: Colors.blue, size: 24),
+                SizedBox(width: 12),
+                Text(
+                  'Mental Health Insights',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Current mood trend
+                  _buildInsightCard(
+                    'Current Mood Trend',
+                    _getMoodTrendDescription(moodTrend),
+                    _getMoodTrendIcon(moodTrend),
+                    _getMoodTrendColor(moodTrend),
+                  ),
+                  const SizedBox(height: 16),
+                  // Emotion frequency chart
+                  if (emotionFrequency.isNotEmpty) _buildEmotionFrequencyCard(),
+                  const SizedBox(height: 16),
+                  // Recommendations
+                  _buildRecommendationsCard(),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightCard(
+      String title, String description, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withOpacity(0.1),
+            color.withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmotionFrequencyCard() {
+    final sortedEmotions = emotionFrequency.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3460),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bar_chart, color: Colors.blue, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Recent Emotion Pattern',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...sortedEmotions.map((entry) {
+            final emotion = entry.key;
+            final count = entry.value;
+            final percentage =
+                count / emotionFrequency.values.reduce((a, b) => a + b);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        emotion.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '$count times',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
+                      color: Colors.white24,
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: percentage,
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(2),
+                          color: _getEmotionColorFromString(emotion),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecommendationsCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3460),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lightbulb, color: Colors.amber, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Personalized Recommendations',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...recommendations
+              .map((recommendation) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '• ',
+                          style: TextStyle(color: Colors.amber, fontSize: 16),
+                        ),
+                        Expanded(
+                          child: Text(
+                            recommendation,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+        ],
+      ),
+    );
+  }
+
+  String _getMoodTrendDescription(String trend) {
+    switch (trend) {
+      case 'positive':
+        return 'Your recent emotional state shows a positive pattern. You\'re doing well mentally!';
+      case 'negative':
+        return 'Your emotional pattern suggests you might benefit from additional self-care and support.';
+      case 'stable':
+        return 'You\'re maintaining good emotional balance. Keep up your current wellness practices.';
+      case 'mixed':
+        return 'Your emotions are varied, which is completely normal. Consider identifying patterns.';
+      default:
+        return 'Keep tracking your emotions for better insights into your mental health.';
+    }
+  }
+
+  IconData _getMoodTrendIcon(String trend) {
+    switch (trend) {
+      case 'positive':
+        return Icons.trending_up;
+      case 'negative':
+        return Icons.trending_down;
+      case 'stable':
+        return Icons.trending_flat;
+      case 'mixed':
+        return Icons.shuffle;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  Color _getMoodTrendColor(String trend) {
+    switch (trend) {
+      case 'positive':
+        return Colors.green;
+      case 'negative':
+        return Colors.red;
+      case 'stable':
+        return Colors.blue;
+      case 'mixed':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Color _getEmotionColorFromString(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'happiness':
+        return const Color(0xFFFFD700);
+      case 'sadness':
+        return const Color(0xFF4FC3F7);
+      case 'anger':
+        return const Color(0xFFFF5722);
+      case 'fear':
+        return const Color(0xFF9C27B0);
+      case 'surprise':
+        return const Color(0xFFFF9800);
+      case 'disgust':
+        return const Color(0xFF8BC34A);
+      case 'neutral':
+        return const Color(0xFF9E9E9E);
+      default:
+        return Colors.white;
+    }
+  }
+}
 
 class ImageMoodDetectionPage extends StatefulWidget {
   const ImageMoodDetectionPage({super.key});
@@ -17,6 +351,71 @@ class ImageMoodDetectionPage extends StatefulWidget {
 
 class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     with TickerProviderStateMixin {
+  void _showEmotionInsights(EmotionResult result) {
+    // Example: Use last 10 results for frequency, or just current for demo
+    final freq = <String, int>{};
+    result.allEmotions.forEach((k, v) {
+      freq[k] = (v > 0.01) ? 1 : 0;
+    });
+    final recommendations = _getRecommendationsForEmotion(result.emotion);
+    final moodTrend = _getMoodTrendFromResult(result);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EmotionInsightsModal(
+        currentEmotion: result,
+        recommendations: recommendations,
+        moodTrend: moodTrend,
+        emotionFrequency: freq,
+      ),
+    );
+  }
+
+  List<String> _getRecommendationsForEmotion(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'happiness':
+        return [
+          'Share your joy with others',
+          'Keep a gratitude journal',
+          'Enjoy the moment'
+        ];
+      case 'sadness':
+        return [
+          'Talk to a friend',
+          'Go for a walk',
+          'Listen to uplifting music'
+        ];
+      case 'anger':
+        return [
+          'Practice deep breathing',
+          'Take a break',
+          'Write down your feelings'
+        ];
+      case 'fear':
+        return [
+          'Challenge negative thoughts',
+          'Practice mindfulness',
+          'Talk to someone you trust'
+        ];
+      case 'surprise':
+        return ['Reflect on what surprised you', 'Embrace new experiences'];
+      case 'disgust':
+        return ['Focus on something positive', 'Practice self-care'];
+      case 'neutral':
+        return ['Try a new hobby', 'Connect with friends'];
+      default:
+        return ['Take care of yourself'];
+    }
+  }
+
+  String _getMoodTrendFromResult(EmotionResult result) {
+    // For demo: just return 'stable' or 'positive' if happiness is high
+    if ((result.allEmotions['happiness'] ?? 0) > 0.5) return 'positive';
+    if ((result.allEmotions['sadness'] ?? 0) > 0.5) return 'negative';
+    return 'stable';
+  }
+
   final ImagePicker _picker = ImagePicker();
   late FaceDetector _faceDetector;
   late AnimationController _animationController;
@@ -476,27 +875,39 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
             width: 70,
             height: 70,
             decoration: BoxDecoration(
-              color: _getEmotionColor(result.dominantEmotion).withOpacity(0.1),
+              color: _getEmotionColor(result.emotion).withOpacity(0.1),
               shape: BoxShape.circle,
               border: Border.all(
-                color: _getEmotionColor(result.dominantEmotion),
+                color: _getEmotionColor(result.emotion),
                 width: 3,
               ),
             ),
             child: Center(
-              child: Text(
-                _getEmotionEmoji(result.dominantEmotion),
-                style: const TextStyle(fontSize: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _getEmotionEmoji(result.emotion),
+                    style: const TextStyle(fontSize: 32),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildActionChip(
+                    icon: Icons.insights,
+                    label: 'View Insights',
+                    color: Colors.purple,
+                    onTap: () => _showEmotionInsights(result),
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            result.dominantEmotion.toUpperCase(),
+            result.emotion.toUpperCase(),
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: _getEmotionColor(result.dominantEmotion),
+              color: _getEmotionColor(result.emotion),
             ),
           ),
           const SizedBox(height: 8),
@@ -510,7 +921,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
           ),
           const SizedBox(height: 4),
           Text(
-            'Analyzed by ${result.analysisType}',
+            'Analysis confidence: ${result.confidenceLevel}',
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey[500],
@@ -730,7 +1141,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
           children: [
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            Text('${result.dominantEmotion} result saved successfully!'),
+            Text('${result.emotion} result saved successfully!'),
           ],
         ),
         backgroundColor: Colors.green,
@@ -746,7 +1157,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
           children: [
             const Icon(Icons.share, color: Colors.white),
             const SizedBox(width: 8),
-            Text('Sharing ${result.dominantEmotion} analysis...'),
+            Text('Sharing ${result.emotion} analysis...'),
           ],
         ),
         backgroundColor: Colors.blue,
@@ -810,7 +1221,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Analyzed using ${result.analysisType} model trained on facial emotion recognition',
+                            'Analysis confidence: ${result.confidenceLevel} (facial emotion recognition)',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue[800],

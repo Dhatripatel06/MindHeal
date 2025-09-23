@@ -49,33 +49,26 @@ class EmotionRecognizer {
     };
   }
 
-  List<List<List<List<double>>>> preprocessImage(img.Image image) {
+  List<List<List<List<int>>>> preprocessImage(img.Image image) {
     // Resize image
     var resized = img.copyResize(image, width: inputSize, height: inputSize);
 
-    // Convert to float and normalize
+    // Convert to uint8 (no normalization, no division)
     var input = List.generate(
-        1,
-        (b) => List.generate(
-            inputSize,
-            (y) => List.generate(
-                inputSize,
-                (x) => List.generate(3, (c) {
-                      var pixel = resized.getPixel(x, y);
-                      double value = 0.0;
-                      if (c == 0)
-                        value = img.getRed(pixel) / 255.0;
-                      else if (c == 1)
-                        value = img.getGreen(pixel) / 255.0;
-                      else
-                        value = img.getBlue(pixel) / 255.0;
-
-                      // Apply ImageNet normalization
-                      var mean = [0.485, 0.456, 0.406][c];
-                      var std = [0.229, 0.224, 0.225][c];
-                      return (value - mean) / std;
-                    }))));
-
+      1,
+      (b) => List.generate(
+        inputSize,
+        (y) => List.generate(
+          inputSize,
+          (x) => List.generate(3, (c) {
+            var pixel = resized.getPixel(x, y);
+            if (c == 0) return img.getRed(pixel);
+            if (c == 1) return img.getGreen(pixel);
+            return img.getBlue(pixel);
+          }),
+        ),
+      ),
+    );
     return input;
   }
 

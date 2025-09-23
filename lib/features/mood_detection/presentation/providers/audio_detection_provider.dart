@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '/features/mood_detection/data/models/emotion_result.dart';
+import '/features/mood_detection/data/services/tflite_service.dart'
+    show EmotionResult;
 import '/features/mood_detection/data/services/audio_processing_service.dart';
 
 class AudioDetectionProvider extends ChangeNotifier {
   final AudioProcessingService _audioService = AudioProcessingService();
-  
+
   bool _isRecording = false;
   bool _isAnalyzing = false;
   bool _isVoiceDetected = false;
@@ -29,14 +30,14 @@ class AudioDetectionProvider extends ChangeNotifier {
       _isRecording = true;
       _hasRecording = false;
       _recordingDuration = Duration.zero;
-      
+
       // Start listening to audio data stream
       _audioService.audioDataStream.listen((data) {
         _audioData = data;
         _isVoiceDetected = data.any((sample) => sample.abs() > 0.1);
         notifyListeners();
       });
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error starting recording: $e');
@@ -62,7 +63,7 @@ class AudioDetectionProvider extends ChangeNotifier {
 
     try {
       final result = await _audioService.analyzeLastRecording();
-      _lastResult = result;
+      _lastResult = result as EmotionResult?;
     } catch (e) {
       debugPrint('Error analyzing recording: $e');
     } finally {
@@ -77,7 +78,7 @@ class AudioDetectionProvider extends ChangeNotifier {
 
     try {
       final result = await _audioService.analyzeAudioFile(audioFile);
-      _lastResult = result;
+      _lastResult = result as EmotionResult?;
     } catch (e) {
       debugPrint('Error analyzing audio file: $e');
     } finally {
