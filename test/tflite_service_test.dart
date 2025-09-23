@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import '../lib/features/mood_detection/data/services/tflite_service.dart';
+import '../lib/features/mood_detection/data/models/emotion_result.dart';
 
 void main() {
   group('TFLite Service Tests', () {
@@ -46,15 +47,14 @@ void main() {
       final fallbackResult =
           await tfliteService.analyzeImage(File('non_existent_file.jpg'));
 
-      expect(fallbackResult, isA<Map<String, dynamic>>());
-      expect(fallbackResult['primaryEmotion'], isA<String>());
-      expect(fallbackResult['confidence'], isA<double>());
-      expect(fallbackResult.emotionConfidences, isA<Map<String, double>>());
-      expect(fallbackResult.timestamp, isA<String>());
+      expect(fallbackResult, isA<EmotionResult>());
+      expect(fallbackResult.dominantEmotion, isA<String>());
+      expect(fallbackResult.confidence, isA<double>());
+      expect(fallbackResult.allEmotions, isA<Map<String, double>>());
+      expect(fallbackResult.timestamp, isA<DateTime>());
 
       // Check that all emotions are represented in confidence map
-      final confidences =
-          fallbackResult.emotionConfidences as Map<String, double>;
+      final confidences = fallbackResult.allEmotions;
       expect(confidences.keys.length, equals(7));
 
       // Check that confidence values are between 0 and 1
