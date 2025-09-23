@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
+import '../../data/models/emotion_result.dart';
 
 class tfliteService {
   static Interpreter? _interpreter;
@@ -87,7 +87,7 @@ class tfliteService {
   static bool get isInitialized => _isInitialized;
 
   /// Analyze image for emotion detection
-  static Future<Map<String, dynamic>> analyzeImage(File imageFile) async {
+  static Future<EmotionResult> analyzeImage(File imageFile) async {
     if (!_isInitialized || _interpreter == null) {
       print('⚠️ TFLite service not initialized, using fallback');
       return _getFallbackResult();
@@ -106,19 +106,41 @@ class tfliteService {
       final resizedImage = img.copyResize(image,
           width: 224, height: 224, interpolation: img.Interpolation.cubic);
 
-      // Preprocess to RGB and normalize with ImageNet mean/std
-      final input = _preprocessImage(resizedImage);
+      // Preprocess to uint8 RGB (no normalization)
+      final input = _preprocessImageUint8(resizedImage);
 
-      // Run inference
+      // Prepare output
       var output = List.filled(7, 0.0).reshape([1, 7]);
-      _interpreter!.run(input, output);
+      try {
+        _interpreter!.run(input, output);
+      } catch (e) {
+        print('❌ TFLite run error: $e');
+        return _getFallbackResult();
+      }
 
-      // No softmax, model output is already probabilities
       final predictions = output[0].cast<double>();
-      final result = _processResults(predictions);
-
+      final emotionLabels = _labels!;
+      int maxIndex = 0;
+      double maxConfidence = predictions[0];
+      for (int i = 1; i < predictions.length; i++) {
+        if (predictions[i] > maxConfidence) {
+          maxConfidence = predictions[i];
+          maxIndex = i;
+        }
+      }
+      final allEmotions = <String, double>{};
+      for (int i = 0; i < predictions.length; i++) {
+        allEmotions[emotionLabels[i]] = predictions[i];
+      }
+      final result = EmotionResult(
+        dominantEmotion: emotionLabels[maxIndex],
+        confidence: maxConfidence,
+        allEmotions: allEmotions,
+        timestamp: DateTime.now(),
+        analysisType: 'tflite',
+      );
       print(
-          '✅ Emotion detection completed - Primary: ${result['primaryEmotion']} (${(result['confidence'] * 100).toStringAsFixed(1)}%)');
+          '✅ Emotion detection completed - Primary: ${result.dominantEmotion} (${(result.confidence * 100).toStringAsFixed(1)}%)');
       return result;
     } catch (e) {
       print('❌ Error during emotion analysis: $e');
@@ -127,12 +149,10 @@ class tfliteService {
   }
 
   /// Preprocess image for model input (FER2013 ResEmoteNet requirements)
-  static List<List<List<List<double>>>> _preprocessImage(img.Image image) {
-    // Use RGB and ImageNet normalization
+  static List<List<List<List<int>>>> _preprocessImageUint8(img.Image image) {
+    // Use RGB uint8, no normalization
     const inputSize = 224;
-    const mean = [0.485, 0.456, 0.406];
-    const std = [0.229, 0.224, 0.225];
-    final input = List.generate(
+    return List.generate(
       1,
       (b) => List.generate(
         inputSize,
@@ -140,108 +160,35 @@ class tfliteService {
           inputSize,
           (x) => List.generate(3, (c) {
             final pixel = image.getPixel(x, y);
-            double value = 0.0;
-            if (c == 0)
-              value = img.getRed(pixel) / 255.0;
-            else if (c == 1)
-              value = img.getGreen(pixel) / 255.0;
-            else
-              value = img.getBlue(pixel) / 255.0;
-            return (value - mean[c]) / std[c];
+            if (c == 0) return img.getRed(pixel);
+            if (c == 1) return img.getGreen(pixel);
+            return img.getBlue(pixel);
           }),
         ),
       ),
     );
-    return input;
-  }
-
-  /// Apply softmax function to convert logits to probabilities
-  static List<double> _applySoftmax(List<double> logits) {
-    // Find max value for numerical stability
-    double maxLogit = logits.reduce((a, b) => a > b ? a : b);
-
-    // Calculate exp(x - max) for each element
-    List<double> expValues = logits.map((x) => math.exp(x - maxLogit)).toList();
-
-    // Calculate sum of all exp values
-    double sumExp = expValues.reduce((a, b) => a + b);
-
-    // Normalize to get probabilities
-    return expValues.map((x) => x / sumExp).toList();
-  }
-
-  /// Process model output to emotion results with improved confidence handling
-  static Map<String, dynamic> _processResults(List<double> predictions) {
-    final emotionLabels = _labels ??
-        ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
-
-    // Ensure we have the right number of predictions
-    if (predictions.length != emotionLabels.length) {
-      print(
-          '⚠️ Prediction length (${predictions.length}) doesn\'t match emotion labels (${emotionLabels.length})');
-    }
-
-    // Find the emotion with highest confidence
-    int maxIndex = 0;
-    double maxConfidence = predictions[0];
-    for (int i = 1; i < predictions.length && i < emotionLabels.length; i++) {
-      if (predictions[i] > maxConfidence) {
-        maxConfidence = predictions[i];
-        maxIndex = i;
-      }
-    }
-
-    // Create emotion confidence map with proper probabilities
-    Map<String, double> emotionConfidences = {};
-    for (int i = 0; i < predictions.length && i < emotionLabels.length; i++) {
-      // Ensure confidence values are between 0 and 1
-      double confidence = math.max(0.0, math.min(1.0, predictions[i]));
-      emotionConfidences[emotionLabels[i]] = confidence;
-    }
-
-    // Calculate secondary emotion (second highest confidence)
-    String secondaryEmotion = 'Neutral';
-    double secondaryConfidence = 0.0;
-    for (int i = 0; i < predictions.length && i < emotionLabels.length; i++) {
-      if (i != maxIndex && predictions[i] > secondaryConfidence) {
-        secondaryConfidence = predictions[i];
-        secondaryEmotion = emotionLabels[i];
-      }
-    }
-
-    // Determine if the prediction is confident enough
-    bool isConfidentPrediction =
-        maxConfidence > 0.4; // Minimum 40% confidence threshold
-
-    return {
-      'primaryEmotion': emotionLabels[maxIndex],
-      'confidence': maxConfidence,
-      'secondaryEmotion': secondaryEmotion,
-      'secondaryConfidence': secondaryConfidence,
-      'emotionConfidences': emotionConfidences,
-      'isConfident': isConfidentPrediction,
-      'timestamp': DateTime.now().toIso8601String(),
-      'modelUsed': 'ResEmoteNet_FER2013',
-    };
   }
 
   /// Fallback result when TFLite is not available
-  static Map<String, dynamic> _getFallbackResult() {
-    return {
-      'primaryEmotion': 'Neutral',
-      'confidence': 0.4,
-      'emotionConfidences': {
-        'Angry': 0.1,
-        'Disgust': 0.1,
-        'Fear': 0.1,
-        'Happy': 0.15,
-        'Sad': 0.1,
-        'Surprise': 0.05,
-        'Neutral': 0.4,
-      },
-      'timestamp': DateTime.now().toIso8601String(),
-      'fallback': true,
+  static EmotionResult _getFallbackResult() {
+    final emotions = <String, double>{
+      'anger': 0.1,
+      'disgust': 0.1,
+      'fear': 0.1,
+      'happiness': 0.15,
+      'neutral': 0.4,
+      'sadness': 0.1,
+      'surprise': 0.05,
     };
+    final dominantEmotion =
+        emotions.entries.reduce((a, b) => a.value > b.value ? a : b);
+    return EmotionResult(
+      dominantEmotion: dominantEmotion.key,
+      confidence: dominantEmotion.value,
+      allEmotions: emotions,
+      timestamp: DateTime.now(),
+      analysisType: 'tflite_fallback',
+    );
   }
 
   /// Run inference with Uint8List input (improved method for camera frames)
@@ -258,20 +205,9 @@ class tfliteService {
         throw Exception('Could not decode input image');
       }
 
-      // Resize and preprocess the image
-      final resizedImage = img.copyResize(image,
-          width: 48, height: 48, interpolation: img.Interpolation.cubic);
-
-      // Apply the same preprocessing as analyzeImage
-      final input = _preprocessImage(resizedImage);
-
-      // Run inference
-      var output = List.filled(7, 0.0).reshape([1, 7]);
-      _interpreter!.run(input, output);
-
-      // Apply softmax and return
-      final predictions = _applySoftmax(output[0].cast<double>());
-      return predictions;
+      // This method is deprecated and not used in the new flow.
+      throw UnimplementedError(
+          'runInference is not supported in the new model integration.');
     } catch (e) {
       print('❌ Error during inference: $e');
       return [0.1, 0.1, 0.1, 0.4, 0.1, 0.1, 0.1]; // Neutral fallback
