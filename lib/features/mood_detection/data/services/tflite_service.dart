@@ -7,7 +7,15 @@ import 'package:image/image.dart' as img;
 
 class tfliteService {
   static Interpreter? _interpreter;
-  static List<String>? _labels;
+  static List<String>? _labels = [
+    'anger',
+    'disgust',
+    'fear',
+    'happiness',
+    'neutral',
+    'sadness',
+    'surprise',
+  ];
   static bool _isInitialized = false;
 
   /// Initialize the TensorFlow Lite service with enhanced validation
@@ -19,7 +27,7 @@ class tfliteService {
       // Try to load the model
       try {
         _interpreter = await Interpreter.fromAsset(
-            'assets/models/fer2013_model_direct.tflite');
+            'assets/models/emotion_model.tflite');
 
         // Validate model input/output tensors
         final inputTensors = _interpreter!.getInputTensors();
@@ -71,23 +79,8 @@ class tfliteService {
 
   /// Load emotion labels
   static Future<void> _loadLabels() async {
-    try {
-      final labelsData =
-          await rootBundle.loadString('assets/models/labels.txt');
-      _labels =
-          labelsData.split('\n').where((line) => line.isNotEmpty).toList();
-    } catch (e) {
-      print('⚠️ Could not load labels, using default emotions');
-      _labels = [
-        'Angry',
-        'Disgust',
-        'Fear',
-        'Happy',
-        'Sad',
-        'Surprise',
-        'Neutral'
-      ];
-    }
+    // Labels are now hardcoded to match the integration guide and model output
+    // Optionally, you can still load from file if needed
   }
 
   /// Check if service is initialized
@@ -109,21 +102,21 @@ class tfliteService {
         throw Exception('Could not decode image');
       }
 
-      // Resize image to model input size (48x48 for FER2013)
-      // Use cubic interpolation for better quality
-      final resizedImage = img.copyResize(image,
-          width: 48, height: 48, interpolation: img.Interpolation.cubic);
 
-      // Convert to grayscale and normalize
-      final input = _preprocessImage(resizedImage);
+    // Resize image to model input size (224x224 for emotion_model.tflite)
+    final resizedImage = img.copyResize(image,
+      width: 224, height: 224, interpolation: img.Interpolation.cubic);
 
-      // Run inference
-      var output = List.filled(7, 0.0).reshape([1, 7]);
-      _interpreter!.run(input, output);
+    // Preprocess to RGB and normalize with ImageNet mean/std
+    final input = _preprocessImage(resizedImage);
 
-      // Apply softmax to get proper probabilities
-      final predictions = _applySoftmax(output[0].cast<double>());
-      final result = _processResults(predictions);
+    // Run inference
+    var output = List.filled(7, 0.0).reshape([1, 7]);
+    _interpreter!.run(input, output);
+
+    // No softmax, model output is already probabilities
+    final predictions = output[0].cast<double>();
+    final result = _processResults(predictions);
 
       print(
           '✅ Emotion detection completed - Primary: ${result['primaryEmotion']} (${(result['confidence'] * 100).toStringAsFixed(1)}%)');
@@ -136,22 +129,23 @@ class tfliteService {
 
   /// Preprocess image for model input (FER2013 ResEmoteNet requirements)
   static List<List<List<List<double>>>> _preprocessImage(img.Image image) {
-    // Convert to grayscale first
-    final grayscaleImage = img.grayscale(image);
-
+    // Use RGB and ImageNet normalization
+    const inputSize = 224;
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
     final input = List.generate(
       1,
-      (i) => List.generate(
-        48,
+      (b) => List.generate(
+        inputSize,
         (y) => List.generate(
-          48,
-          (x) => List.generate(1, (c) {
-            final pixel = grayscaleImage.getPixel(x, y);
-            // Get the red channel value (same as gray value in grayscale image)
-            final grayValue = img.getRed(pixel);
-            // Normalize to [-1, 1] range as commonly used in ResNet-based models
-            final normalizedValue = (grayValue / 127.5) - 1.0;
-            return normalizedValue;
+          inputSize,
+          (x) => List.generate(3, (c) {
+            final pixel = image.getPixel(x, y);
+            double value = 0.0;
+            if (c == 0) value = img.getRed(pixel) / 255.0;
+            else if (c == 1) value = img.getGreen(pixel) / 255.0;
+            else value = img.getBlue(pixel) / 255.0;
+            return (value - mean[c]) / std[c];
           }),
         ),
       ),
