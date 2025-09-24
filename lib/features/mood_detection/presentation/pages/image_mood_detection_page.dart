@@ -1001,14 +1001,16 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _buildActionButton(
-              icon: Icons.camera_alt,
-              label: 'Camera',
-              color: Colors.blue,
-              onPressed:
-                  (provider.isAnalyzing || !provider.isServiceInitialized)
-                      ? null
-                      : _captureImage,
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.camera_alt,
+                label: 'Camera',
+                color: Colors.blue,
+                onPressed:
+                    (provider.isAnalyzing || !provider.isServiceInitialized)
+                        ? null
+                        : _captureImage,
+              ),
             ),
             _buildActionButton(
               icon: Icons.photo_library,

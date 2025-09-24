@@ -28,7 +28,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -98,7 +98,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                           isRecording: provider.isRecording,
                           color: Colors.teal,
                         ),
-                        
+
                         // Voice Activity Indicator
                         if (provider.isRecording)
                           Positioned(
@@ -106,7 +106,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                             right: 20,
                             child: _buildVoiceActivityIndicator(provider),
                           ),
-                        
+
                         // Recording Timer
                         if (provider.isRecording)
                           Positioned(
@@ -114,7 +114,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                             left: 20,
                             child: _buildRecordingTimer(provider),
                           ),
-                        
+
                         // Center Message
                         if (!provider.isRecording && provider.audioData.isEmpty)
                           const Center(
@@ -143,7 +143,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   ),
                 ),
               ),
-              
+
               // Results Section
               if (provider.lastResult != null)
                 Container(
@@ -162,7 +162,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   ),
                   child: _buildResultsSection(provider),
                 ),
-              
+
               // Control Section
               Container(
                 padding: const EdgeInsets.all(24),
@@ -249,7 +249,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
 
   Widget _buildResultsSection(AudioDetectionProvider provider) {
     final result = provider.lastResult!;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -271,7 +271,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           ],
         ),
         const SizedBox(height: 16),
-        
+
         // Dominant Emotion
         Container(
           padding: const EdgeInsets.all(16),
@@ -299,7 +299,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: _getEmotionColor(result.emotion),  
+                        color: _getEmotionColor(result.emotion),
                       ),
                     ),
                     Text(
@@ -315,9 +315,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // All Emotions
         Text(
           'Emotion Breakdown',
@@ -328,7 +328,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           ),
         ),
         const SizedBox(height: 8),
-        
+
         ...result.allEmotions.entries.map(
           (entry) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -339,9 +339,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Action Buttons
         Row(
           children: [
@@ -410,9 +410,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             );
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Text(
           provider.isRecording ? 'Recording...' : 'Tap to Record',
           style: TextStyle(
@@ -421,9 +421,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             color: Colors.grey[700],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Secondary Controls
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -461,10 +461,14 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: onPressed != null ? Colors.teal.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+            color: onPressed != null
+                ? Colors.teal.withOpacity(0.1)
+                : Colors.grey.withOpacity(0.1),
             shape: BoxShape.circle,
             border: Border.all(
-              color: onPressed != null ? Colors.teal.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+              color: onPressed != null
+                  ? Colors.teal.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.3),
             ),
           ),
           child: IconButton(

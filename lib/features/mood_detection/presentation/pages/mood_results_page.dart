@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../data/models/emotion_result.dart';
+import '../../data/services/tflite_service.dart' show EmotionResult;
 import '../widgets/results_chart_widget.dart';
 
 class MoodResultsPage extends StatefulWidget {
@@ -45,7 +45,7 @@ class _MoodResultsPageState extends State<MoodResultsPage>
           'Analysis Results',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: _getAnalysisTypeColor(widget.result.analysisType),
+        backgroundColor: Colors.teal,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
@@ -68,23 +68,23 @@ class _MoodResultsPageState extends State<MoodResultsPage>
               // Header Card
               _buildHeaderCard(),
               const SizedBox(height: 16),
-              
+
               // Emotion Breakdown Chart
               _buildEmotionChart(),
               const SizedBox(height: 16),
-              
+
               // Detailed Metrics
               _buildDetailedMetrics(),
               const SizedBox(height: 16),
-              
+
               // Analysis Info
               _buildAnalysisInfo(),
               const SizedBox(height: 16),
-              
+
               // Recommendations
               _buildRecommendations(),
               const SizedBox(height: 24),
-              
+
               // Action Buttons
               _buildActionButtons(),
             ],
@@ -100,8 +100,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            _getEmotionColor(widget.result.dominantEmotion),
-            _getEmotionColor(widget.result.dominantEmotion).withOpacity(0.7),
+            _getEmotionColor(widget.result.emotion),
+            _getEmotionColor(widget.result.emotion).withOpacity(0.7),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -109,7 +109,7 @@ class _MoodResultsPageState extends State<MoodResultsPage>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: _getEmotionColor(widget.result.dominantEmotion).withOpacity(0.3),
+            color: _getEmotionColor(widget.result.emotion).withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -118,13 +118,13 @@ class _MoodResultsPageState extends State<MoodResultsPage>
       child: Column(
         children: [
           Icon(
-            _getEmotionIcon(widget.result.dominantEmotion),
+            _getEmotionIcon(widget.result.emotion),
             size: 64,
             color: Colors.white,
           ),
           const SizedBox(height: 16),
           Text(
-            widget.result.dominantEmotion.toUpperCase(),
+            widget.result.emotion.toUpperCase(),
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -142,7 +142,7 @@ class _MoodResultsPageState extends State<MoodResultsPage>
           ),
           const SizedBox(height: 4),
           Text(
-            _formatAnalysisType(widget.result.analysisType),
+            widget.result.confidenceLevel,
             style: TextStyle(
               fontSize: 14,
               color: Colors.white.withOpacity(0.8),
@@ -249,7 +249,7 @@ class _MoodResultsPageState extends State<MoodResultsPage>
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Metrics Grid
           GridView.count(
             shrinkWrap: true,
@@ -261,9 +261,9 @@ class _MoodResultsPageState extends State<MoodResultsPage>
             children: [
               _buildMetricCard(
                 'Primary Emotion',
-                widget.result.dominantEmotion,
+                widget.result.emotion,
                 Icons.psychology,
-                _getEmotionColor(widget.result.dominantEmotion),
+                _getEmotionColor(widget.result.emotion),
               ),
               _buildMetricCard(
                 'Confidence Score',
@@ -272,8 +272,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
                 Colors.blue,
               ),
               _buildMetricCard(
-                'Analysis Type',
-                _formatAnalysisType(widget.result.analysisType),
+                'Confidence Level',
+                widget.result.confidenceLevel,
                 Icons.analytics,
                 Colors.purple,
               ),
@@ -290,7 +290,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
     );
   }
 
-  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
+  Widget _buildMetricCard(
+      String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -351,12 +352,12 @@ class _MoodResultsPageState extends State<MoodResultsPage>
             ),
           ),
           const SizedBox(height: 16),
-          
-          _buildInfoRow('Analysis Method', _formatAnalysisType(widget.result.analysisType)),
+          _buildInfoRow('Analysis Confidence', widget.result.confidenceLevel),
           _buildInfoRow('Processing Time', '< 1 second'),
           _buildInfoRow('Model Version', 'v2.1.0'),
           _buildInfoRow('Accuracy', '94.2%'),
-          _buildInfoRow('Detected Emotions', '${widget.result.allEmotions.length}'),
+          _buildInfoRow(
+              'Detected Emotions', '${widget.result.allEmotions.length}'),
         ],
       ),
     );
@@ -389,8 +390,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
   }
 
   Widget _buildRecommendations() {
-    final recommendations = _getRecommendations(widget.result.dominantEmotion);
-    
+    final recommendations = _getRecommendations(widget.result.emotion);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -426,35 +427,36 @@ class _MoodResultsPageState extends State<MoodResultsPage>
             ],
           ),
           const SizedBox(height: 16),
-          
-          ...recommendations.map((recommendation) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(top: 6),
-                  decoration: BoxDecoration(
-                    color: _getEmotionColor(widget.result.dominantEmotion),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    recommendation,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      height: 1.4,
+          ...recommendations
+              .map((recommendation) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(top: 6),
+                          decoration: BoxDecoration(
+                            color: _getEmotionColor(widget.result.emotion),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            recommendation,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
+                  ))
+              .toList(),
         ],
       ),
     );
@@ -501,8 +503,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
             label: const Text('Run New Analysis'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              side: BorderSide(color: _getEmotionColor(widget.result.dominantEmotion)),
-              foregroundColor: _getEmotionColor(widget.result.dominantEmotion),
+              side: BorderSide(color: _getEmotionColor(widget.result.emotion)),
+              foregroundColor: _getEmotionColor(widget.result.emotion),
             ),
           ),
         ),
@@ -557,7 +559,8 @@ class _MoodResultsPageState extends State<MoodResultsPage>
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                    leading:
+                        const Icon(Icons.picture_as_pdf, color: Colors.red),
                     title: const Text('Export as PDF'),
                     onTap: () {
                       Navigator.pop(context);
@@ -727,7 +730,7 @@ class _MoodResultsPageState extends State<MoodResultsPage>
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
-    
+
     if (difference.inMinutes < 1) {
       return 'Just now';
     } else if (difference.inMinutes < 60) {

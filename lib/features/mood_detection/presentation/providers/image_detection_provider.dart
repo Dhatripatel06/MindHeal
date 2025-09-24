@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import '../../data/services/tflite_service.dart'
-    show EmotionRecognitionService, EmotionResult;
+    show EmotionRecognitionService, EmotionResult, EmotionTracker;
 
 class ImageDetectionProvider extends ChangeNotifier {
   File? _selectedImageFile;
@@ -92,9 +92,14 @@ class ImageDetectionProvider extends ChangeNotifier {
 
   // Set result
   void setResult(EmotionResult result) {
+    // Always show the result with the highest confidence (dominant emotion)
     _lastResult = result;
     _emotions = result.allEmotions;
     _errorMessage = null;
+    // Only add to tracker if confidence is between 0.95 and 0.99 (inclusive)
+    if (result.confidence >= 0.95 && result.confidence <= 0.99) {
+      EmotionTracker().addEmotionResult(result);
+    }
     notifyListeners();
   }
 

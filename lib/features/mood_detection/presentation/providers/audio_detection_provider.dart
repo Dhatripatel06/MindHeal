@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '/features/mood_detection/data/services/tflite_service.dart'
-    show EmotionResult;
+    show EmotionResult, EmotionTracker;
 import '/features/mood_detection/data/services/audio_processing_service.dart';
 
 class AudioDetectionProvider extends ChangeNotifier {
@@ -64,6 +64,11 @@ class AudioDetectionProvider extends ChangeNotifier {
     try {
       final result = await _audioService.analyzeLastRecording();
       _lastResult = result as EmotionResult?;
+      if (_lastResult != null &&
+          _lastResult!.confidence >= 0.95 &&
+          _lastResult!.confidence <= 0.99) {
+        EmotionTracker().addEmotionResult(_lastResult!);
+      }
     } catch (e) {
       debugPrint('Error analyzing recording: $e');
     } finally {
@@ -79,6 +84,11 @@ class AudioDetectionProvider extends ChangeNotifier {
     try {
       final result = await _audioService.analyzeAudioFile(audioFile);
       _lastResult = result as EmotionResult?;
+      if (_lastResult != null &&
+          _lastResult!.confidence >= 0.95 &&
+          _lastResult!.confidence <= 0.99) {
+        EmotionTracker().addEmotionResult(_lastResult!);
+      }
     } catch (e) {
       debugPrint('Error analyzing audio file: $e');
     } finally {

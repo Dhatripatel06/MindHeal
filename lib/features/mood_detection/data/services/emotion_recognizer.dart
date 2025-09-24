@@ -26,15 +26,19 @@ class EmotionRecognizer {
       throw Exception('Model not loaded');
     }
 
-    // Preprocess image
-    var input = preprocessImage(image);
 
-    // Prepare output
-    var output = List.filled(emotionClasses.length, 0.0)
-        .reshape([1, emotionClasses.length]);
+  // Preprocess image
+  var input = preprocessImage(image);
+  // Debug: print input shape and type
+  print('TFLite input type: \\${input.runtimeType}');
+  print('TFLite input shape: [batch: \\${input.length}, height: \\${input[0].length}, width: \\${input[0][0].length}, channels: \\${input[0][0][0].length}]');
 
-    // Run inference
-    _interpreter!.run(input, output);
+  // Prepare output
+  var output = List.filled(emotionClasses.length, 0.0)
+    .reshape([1, emotionClasses.length]);
+
+  // Run inference
+  _interpreter!.run(input, output);
 
     // Get results
     var predictions = output[0];
@@ -50,9 +54,8 @@ class EmotionRecognizer {
   }
 
   List<List<List<List<int>>>> preprocessImage(img.Image image) {
-    // Resize image
+    // Resize image (image package handles most formats)
     var resized = img.copyResize(image, width: inputSize, height: inputSize);
-
     // Convert to uint8 (no normalization, no division)
     var input = List.generate(
       1,

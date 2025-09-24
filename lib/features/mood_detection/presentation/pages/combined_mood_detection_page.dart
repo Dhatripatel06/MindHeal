@@ -13,7 +13,8 @@ class CombinedMoodDetectionPage extends StatefulWidget {
   const CombinedMoodDetectionPage({super.key});
 
   @override
-  State<CombinedMoodDetectionPage> createState() => _CombinedMoodDetectionPageState();
+  State<CombinedMoodDetectionPage> createState() =>
+      _CombinedMoodDetectionPageState();
 }
 
 class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
@@ -30,11 +31,11 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    
+
     _initializeCamera();
   }
 
@@ -127,14 +128,17 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                             children: [
                               Container(
                                 color: Colors.black,
-                                child: _cameraController?.value.isInitialized == true
+                                child: _cameraController?.value.isInitialized ==
+                                        true
                                     ? AspectRatio(
-                                        aspectRatio: _cameraController!.value.aspectRatio,
+                                        aspectRatio: _cameraController!
+                                            .value.aspectRatio,
                                         child: Stack(
                                           children: [
                                             CameraPreview(_cameraController!),
                                             CameraOverlayWidget(
-                                              detectedFaces: provider.detectedFaces,
+                                              detectedFaces:
+                                                  provider.detectedFaces,
                                               emotions: provider.imageEmotions,
                                               showOverlay: provider.isAnalyzing,
                                             ),
@@ -142,7 +146,8 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                                         ),
                                       )
                                     : const Center(
-                                        child: CircularProgressIndicator(color: Colors.purple),
+                                        child: CircularProgressIndicator(
+                                            color: Colors.purple),
                                       ),
                               ),
                               // Camera Label
@@ -150,7 +155,8 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                                 top: 16,
                                 left: 16,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
                                     color: Colors.purple,
                                     borderRadius: BorderRadius.circular(20),
@@ -168,7 +174,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                             ],
                           ),
                         ),
-                        
+
                         // Audio Section
                         Expanded(
                           flex: 1,
@@ -186,7 +192,8 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                                   top: 8,
                                   left: 16,
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 4),
                                     decoration: BoxDecoration(
                                       color: Colors.teal,
                                       borderRadius: BorderRadius.circular(15),
@@ -232,7 +239,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                   ),
                 ),
               ),
-              
+
               // Fusion Results Section
               if (provider.fusedResult != null)
                 Container(
@@ -251,7 +258,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                   ),
                   child: _buildFusionResults(provider),
                 ),
-              
+
               // Control Section
               Container(
                 padding: const EdgeInsets.all(24),
@@ -266,7 +273,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
 
   Widget _buildFusionResults(CombinedDetectionProvider provider) {
     final result = provider.fusedResult!;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -283,22 +290,27 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
             ),
             Row(
               children: [
-                _buildModalityIndicator('Visual', provider.imageConfidence, Colors.purple),
+                _buildModalityIndicator(
+                    'Visual', provider.imageConfidence, Colors.purple),
                 const SizedBox(width: 8),
-                _buildModalityIndicator('Audio', provider.audioConfidence, Colors.teal),
+                _buildModalityIndicator(
+                    'Audio', provider.audioConfidence, Colors.teal),
               ],
             ),
           ],
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Fused Emotion Result
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.purple.withOpacity(0.1), Colors.teal.withOpacity(0.1)],
+              colors: [
+                Colors.purple.withOpacity(0.1),
+                Colors.teal.withOpacity(0.1)
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -310,7 +322,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _getEmotionColor(result.emotion),        
+                  color: _getEmotionColor(result.emotion),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -353,9 +365,9 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Individual Results Comparison
         Row(
           children: [
@@ -376,9 +388,9 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
             ),
           ],
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Action Buttons
         Row(
           children: [
@@ -444,7 +456,8 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
     );
   }
 
-  Widget _buildModalityResult(String title, EmotionResult? result, Color color) {
+  Widget _buildModalityResult(
+      String title, EmotionResult? result, Color color) {
     if (result == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -521,10 +534,14 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: provider.isAnalyzing ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+            color: provider.isAnalyzing
+                ? Colors.orange.withOpacity(0.1)
+                : Colors.green.withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: provider.isAnalyzing ? Colors.orange.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+              color: provider.isAnalyzing
+                  ? Colors.orange.withOpacity(0.3)
+                  : Colors.green.withOpacity(0.3),
             ),
           ),
           child: Row(
@@ -549,9 +566,9 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
             ],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Main Action Button
         AnimatedBuilder(
           animation: _pulseController,
@@ -574,8 +591,9 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: (provider.isAnalyzing ? Colors.red : Colors.purple)
-                            .withOpacity(0.3),
+                        color:
+                            (provider.isAnalyzing ? Colors.red : Colors.purple)
+                                .withOpacity(0.3),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -591,11 +609,13 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
             );
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Text(
-          provider.isAnalyzing ? 'Analyzing Both Modalities' : 'Start Combined Analysis',
+          provider.isAnalyzing
+              ? 'Analyzing Both Modalities'
+              : 'Start Combined Analysis',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -603,9 +623,9 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
           ),
           textAlign: TextAlign.center,
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Analysis Options
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,

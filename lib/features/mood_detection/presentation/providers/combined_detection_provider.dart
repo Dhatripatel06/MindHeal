@@ -1,7 +1,8 @@
 import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
-import '../../data/services/tflite_service.dart' show EmotionResult;
+import '../../data/services/tflite_service.dart'
+    show EmotionResult, EmotionTracker;
 import 'image_detection_provider.dart';
 import 'audio_detection_provider.dart';
 
@@ -133,7 +134,12 @@ class CombinedDetectionProvider extends ChangeNotifier {
       topPredictions: [],
       timestamp: DateTime.now(),
     );
-
+    // Only add to tracker if confidence is between 0.95 and 0.99 (inclusive)
+    if (_fusedResult != null &&
+        _fusedResult!.confidence >= 0.95 &&
+        _fusedResult!.confidence <= 0.99) {
+      EmotionTracker().addEmotionResult(_fusedResult!);
+    }
     notifyListeners();
   }
 
