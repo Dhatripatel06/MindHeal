@@ -1,5 +1,6 @@
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
+import 'dart:typed_data';
 
 class EmotionRecognizer {
   static const List<String> emotionClasses = [
@@ -26,19 +27,38 @@ class EmotionRecognizer {
       throw Exception('Model not loaded');
     }
 
+    // Preprocess image to nested list [1,224,224,3]
+    var input = preprocessImage(image);
+    // Debug: Print input type and shape
+    print('TFLite input type: \\${input.runtimeType}');
+    try {
+      print(
+          'TFLite input shape: [batch: \\${input.length}, height: \\${input[0].length}, width: \\${input[0][0].length}, channels: \\${input[0][0][0].length}]');
+    } catch (e) {
+      print('TFLite input shape error: \\${e.toString()}');
+    }
+    // Runtime check for shape and type
+    if (input is! List ||
+        input.length != 1 ||
+        input[0] is! List ||
+        input[0].length != 224 ||
+        input[0][0] is! List ||
+        input[0][0].length != 224 ||
+        input[0][0][0] is! List ||
+        input[0][0][0].length != 3) {
+      throw Exception(
+          'TFLite input shape/type mismatch: expected [1,224,224,3] of uint8');
+    }
+    if (input[0][0][0][0] is! int) {
+      throw Exception('TFLite input type mismatch: expected uint8 (int)');
+    }
 
-  // Preprocess image
-  var input = preprocessImage(image);
-  // Debug: print input shape and type
-  print('TFLite input type: \\${input.runtimeType}');
-  print('TFLite input shape: [batch: \\${input.length}, height: \\${input[0].length}, width: \\${input[0][0].length}, channels: \\${input[0][0][0].length}]');
+    // Prepare output
+    var output = List.filled(emotionClasses.length, 0.0)
+        .reshape([1, emotionClasses.length]);
 
-  // Prepare output
-  var output = List.filled(emotionClasses.length, 0.0)
-    .reshape([1, emotionClasses.length]);
-
-  // Run inference
-  _interpreter!.run(input, output);
+    // Run inference
+    _interpreter!.run(input, output);
 
     // Get results
     var predictions = output[0];
@@ -53,10 +73,9 @@ class EmotionRecognizer {
     };
   }
 
+  // Returns nested List<List<List<List<int>>>> shape [1,224,224,3]
   List<List<List<List<int>>>> preprocessImage(img.Image image) {
-    // Resize image (image package handles most formats)
     var resized = img.copyResize(image, width: inputSize, height: inputSize);
-    // Convert to uint8 (no normalization, no division)
     var input = List.generate(
       1,
       (b) => List.generate(

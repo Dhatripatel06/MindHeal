@@ -975,14 +975,17 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 16),
+            Flexible(child: Icon(icon, color: color, size: 16)),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
               ),
             ),
           ],
@@ -1012,14 +1015,16 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                         : _captureImage,
               ),
             ),
-            _buildActionButton(
-              icon: Icons.photo_library,
-              label: 'Gallery',
-              color: Colors.green,
-              onPressed:
-                  (provider.isAnalyzing || !provider.isServiceInitialized)
-                      ? null
-                      : _pickFromGallery,
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.photo_library,
+                label: 'Gallery',
+                color: Colors.green,
+                onPressed:
+                    (provider.isAnalyzing || !provider.isServiceInitialized)
+                        ? null
+                        : _pickFromGallery,
+              ),
             ),
           ],
         ),
@@ -1192,101 +1197,103 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
             ),
             Padding(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.psychology, color: Colors.blue[600]),
-                      const SizedBox(width: 8),
-                      Text(
-                        'AI Emotion Analysis',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
+              child: Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
                       children: [
-                        Icon(Icons.info_outline,
-                            color: Colors.blue[600], size: 16),
+                        Icon(Icons.psychology, color: Colors.blue[600]),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Analysis confidence: ${result.confidenceLevel} (facial emotion recognition)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue[800],
-                            ),
+                        Text(
+                          'AI Emotion Analysis',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Emotion Probabilities',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...result.allEmotions.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Column(
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                _getEmotionEmoji(entry.key),
-                                style: const TextStyle(fontSize: 20),
+                          Icon(Icons.info_outline,
+                              color: Colors.blue[600], size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Analysis confidence: ${result.confidenceLevel} (facial emotion recognition)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue[800],
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  entry.key.toUpperCase(),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${(entry.value * 100).toStringAsFixed(1)}%',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: _getEmotionColor(entry.key),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          LinearProgressIndicator(
-                            value: entry.value,
-                            backgroundColor: Colors.grey[200],
-                            valueColor: AlwaysStoppedAnimation(
-                              _getEmotionColor(entry.key),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Emotion Probabilities',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...result.allEmotions.entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  _getEmotionEmoji(entry.key),
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    entry.key.toUpperCase(),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${(entry.value * 100).toStringAsFixed(1)}%',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: _getEmotionColor(entry.key),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(
+                              value: entry.value,
+                              backgroundColor: Colors.grey[200],
+                              valueColor: AlwaysStoppedAnimation(
+                                _getEmotionColor(entry.key),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
           ],

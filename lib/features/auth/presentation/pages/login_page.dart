@@ -23,49 +23,76 @@ class LoginPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: 60),
-                      
-                      // Logo and title
+                      // Logo and app name
                       Center(
                         child: Column(
                           children: [
                             Container(
-                              width: 80,
-                              height: 80,
+                              width: 90,
+                              height: 90,
                               decoration: BoxDecoration(
-                                color: Theme.of(context).primaryColor,
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                              child: const Icon(
-                                Icons.psychology_outlined,
-                                color: Color(0xFF4299E1),
-                                 ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Image.asset(
+                                  'assets/images/logo_mindheal.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
+                            Text(
+                              'MindHeal',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).primaryColorDark,
+                                    letterSpacing: 1.2,
+                                  ),
+                            ),
+                            const SizedBox(height: 16),
                             Text(
                               'Welcome Back',
-                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF2D3748),
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF2D3748),
+                                  ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Continue your wellness journey',
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: const Color(0xFF718096),
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                    color: const Color(0xFF718096),
+                                  ),
                             ),
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 48),
-                      
+
                       // Login form
                       const LoginForm(),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Divider
                       Row(
                         children: [
@@ -74,22 +101,25 @@ class LoginPage extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
                               'or',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF718096),
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: const Color(0xFF718096),
+                                  ),
                             ),
                           ),
                           const Expanded(child: Divider()),
                         ],
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Google sign in button
                       ElevatedButton.icon(
-                        onPressed: authProvider.state.isLoading 
-                          ? null 
-                          : () => authProvider.signInWithGoogle(),
+                        onPressed: authProvider.state.isLoading
+                            ? null
+                            : () => authProvider.signInWithGoogle(),
                         icon: Image.asset(
                           'assets/images/google_logo.png',
                           width: 20,
@@ -106,26 +136,27 @@ class LoginPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // Anonymous sign in
                       TextButton(
-                        onPressed: authProvider.state.isLoading 
-                          ? null 
-                          : () => authProvider.signInAnonymously(),
+                        onPressed: authProvider.state.isLoading
+                            ? null
+                            : () => authProvider.signInAnonymously(),
                         child: const Text('Try without account'),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Sign up link
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text('Don\'t have an account? '),
                           TextButton(
-                            onPressed: () => Navigator.pushNamed(context, '/register'),
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/register'),
                             child: const Text('Sign Up'),
                           ),
                         ],
@@ -133,7 +164,7 @@ class LoginPage extends StatelessWidget {
                     ],
                   ),
                 ),
-                
+
                 // Loading overlay
                 if (authProvider.state.isLoading)
                   Container(

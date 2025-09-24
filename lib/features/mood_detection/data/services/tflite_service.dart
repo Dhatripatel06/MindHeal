@@ -1,8 +1,7 @@
-// MindHeal TFLite Emotion Recognition Integration
-// File: lib/services/emotion_recognition_service.dart
+// Improved TFLite Service for MindHeal - Better Input Processing
+// File: lib/features/mood_detection/data/services/tflite_service.dart
 
 import 'dart:async';
-// import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math' as math;
 
@@ -134,7 +133,7 @@ class EmotionPrediction {
 class EmotionRecognitionService {
   static const List<String> _emotionClasses = [
     'anger',
-    'disgust',
+    'disgust', 
     'fear',
     'happiness',
     'neutral',
@@ -143,12 +142,16 @@ class EmotionRecognitionService {
   ];
 
   static const int _inputSize = 224;
-  static const List<double> _mean = [0.485, 0.456, 0.406];
-  static const List<double> _std = [0.229, 0.224, 0.225];
-
+  
   Interpreter? _interpreter;
   late FaceDetector _faceDetector;
   bool _isInitialized = false;
+  
+  // Model input/output details
+  TensorType? _inputType;
+  TensorType? _outputType;
+  List<int>? _inputShape;
+  List<int>? _outputShape;
 
   // Confidence thresholds for mental health context
   static const double highConfidenceThreshold = 0.75;
@@ -179,32 +182,29 @@ class EmotionRecognitionService {
 
   Future<void> _loadModel() async {
     try {
-      // Load labels from assets if available
-      List<String> labels = _emotionClasses;
-      try {
-        final labelData =
-            await rootBundle.loadString('assets/models/labels.txt');
-        labels = labelData
-            .split('\n')
-            .where((line) => line.trim().isNotEmpty)
-            .toList();
-        print('📋 Loaded labels from file: $labels');
-      } catch (e) {
-        print('⚠️ Using default labels, could not load from file: $e');
+      // Load TFLite model
+      _interpreter = await Interpreter.fromAsset('assets/models/emotion_model.tflite');
+
+      // Get input and output tensor details
+      final inputTensors = _interpreter!.getInputTensors();
+      final outputTensors = _interpreter!.getOutputTensors();
+      
+      if (inputTensors.isNotEmpty) {
+        _inputType = inputTensors[0].type;
+        _inputShape = inputTensors[0].shape;
+      }
+      
+      if (outputTensors.isNotEmpty) {
+        _outputType = outputTensors[0].type;
+        _outputShape = outputTensors[0].shape;
       }
 
-      // Load TFLite model
-      _interpreter =
-          await Interpreter.fromAsset('assets/models/emotion_model.tflite');
-
-      // Verify model input/output shapes
-      final inputShape = _interpreter!.getInputTensors()[0].shape;
-      final outputShape = _interpreter!.getOutputTensors()[0].shape;
-
       print('📊 Model loaded successfully');
-      print('   Input shape: $inputShape');
-      print('   Output shape: $outputShape');
-      print('   Expected classes: ${labels.length}');
+      print('   Input shape: $_inputShape');
+      print('   Input type: $_inputType');
+      print('   Output shape: $_outputShape');
+      print('   Output type: $_outputType');
+      print('   Expected classes: ${_emotionClasses.length}');
     } catch (e) {
       print('❌ Error loading emotion model: $e');
       throw Exception('Failed to load emotion recognition model: $e');
@@ -218,7 +218,7 @@ class EmotionRecognitionService {
       enableContours: false,
       enableTracking: false,
       minFaceSize: 0.1,
-      performanceMode: FaceDetectorMode.fast, // Use fast mode for real-time
+      performanceMode: FaceDetectorMode.fast,
     );
 
     _faceDetector = FaceDetector(options: options);
@@ -238,8 +238,7 @@ class EmotionRecognitionService {
     }
   }
 
-  Future<EmotionResult> analyzeEmotion(img.Image image,
-      {Rect? faceRect}) async {
+  Future<EmotionResult> analyzeEmotion(img.Image image, {Rect? faceRect}) async {
     if (!_isInitialized) {
       return EmotionResult.error('Service not initialized');
     }
@@ -249,34 +248,103 @@ class EmotionRecognitionService {
     }
 
     try {
+      print('🔍 Processing image for emotion analysis...');
+      
       // Process image
       img.Image processedImage = image;
 
       if (faceRect != null) {
+        print('✂️ Cropping face region');
         processedImage = _cropAndEnhanceFace(image, faceRect);
       } else {
-        // Enhance full image if no face detected
+        print('🖼️ Using full image');
         processedImage = _enhanceImageQuality(image);
       }
 
-      // Preprocess for model
-      final input = _preprocessImage(processedImage);
-
-      // Prepare output tensor
-      var output = List.filled(_emotionClasses.length, 0.0)
-          .reshape([1, _emotionClasses.length]);
-
-      // Run inference
-      _interpreter!.run(input, output);
-
-      // Process results
-      final predictions = List<double>.from(output[0]);
-      final maxIndex = predictions.indexOf(predictions.reduce(math.max));
-      final confidence = predictions[maxIndex];
+      print('⚙️ Preprocessing image...');
+      
+      // Try both input formats to see which works better
+      final input = _inputType == TensorType.uint8 
+          ? _preprocessImageAsUint8(processedImage)
+          : _preprocessImageAsFloat32(processedImage);
+      
+      print('🤖 Running inference...');
+      
+      // Prepare output tensor based on output type
+      final output = _outputType == TensorType.uint8 
+          ? Uint8List(_emotionClasses.length)
+          : Float32List(_emotionClasses.length);
+      
+      // Run inference with timeout
+      final completer = Completer<void>();
+      Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          completer.completeError('Inference timeout');
+        }
+      });
+      
+      try {
+        _interpreter!.run(input, output);
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      } catch (e) {
+        if (!completer.isCompleted) {
+          completer.completeError(e);
+        }
+      }
+      
+      await completer.future;
+      
+      print('📊 Processing results...');
+      
+      // Convert output to probabilities
+      List<double> probabilities;
+      if (_outputType == TensorType.uint8) {
+        // Dequantize and apply softmax
+        final dequantized = (output as Uint8List).map((value) => 
+            (value.toDouble() / 255.0)).toList();
+        probabilities = _applySoftmax(dequantized);
+      } else {
+        // Apply softmax to float output
+        probabilities = _applySoftmax((output as Float32List).toList());
+      }
+      
+      // Debug: Print all probabilities
+      for (int i = 0; i < probabilities.length && i < _emotionClasses.length; i++) {
+        print('   ${_emotionClasses[i]}: ${(probabilities[i] * 100).toStringAsFixed(1)}%');
+      }
+      
+      // Find best prediction with bounds checking
+      if (probabilities.isEmpty) {
+        return EmotionResult.error('Empty prediction results');
+      }
+      
+      double maxValue = probabilities[0];
+      int maxIndex = 0;
+      for (int i = 1; i < probabilities.length; i++) {
+        if (probabilities[i] > maxValue) {
+          maxValue = probabilities[i];
+          maxIndex = i;
+        }
+      }
+      
+      // Ensure maxIndex is within bounds
+      if (maxIndex < 0 || maxIndex >= _emotionClasses.length) {
+        return EmotionResult.error('Invalid prediction index: $maxIndex');
+      }
+      
+      final confidence = maxValue;
       final emotion = _emotionClasses[maxIndex];
 
-      // Create top predictions
-      final indexedPredictions = predictions.asMap().entries.toList();
+      print('✅ Analysis complete: $emotion (${(confidence * 100).toStringAsFixed(1)}%)');
+
+      // Create top predictions with bounds checking
+      final indexedPredictions = <MapEntry<int, double>>[];
+      for (int i = 0; i < probabilities.length && i < _emotionClasses.length; i++) {
+        indexedPredictions.add(MapEntry(i, probabilities[i]));
+      }
+      
       indexedPredictions.sort((a, b) => b.value.compareTo(a.value));
       final topPredictions = indexedPredictions
           .take(3)
@@ -286,21 +354,26 @@ class EmotionRecognitionService {
               ))
           .toList();
 
+      // Create emotion map with bounds checking
+      final allEmotions = <String, double>{};
+      for (int i = 0; i < probabilities.length && i < _emotionClasses.length; i++) {
+        allEmotions[_emotionClasses[i]] = probabilities[i];
+      }
+
       return EmotionResult(
         emotion: emotion,
         confidence: confidence,
         confidenceLevel: _getConfidenceLevel(confidence),
-        allEmotions: Map.fromIterables(_emotionClasses, predictions),
+        allEmotions: allEmotions,
         topPredictions: topPredictions,
       );
     } catch (e) {
-      print('Error in emotion analysis: $e');
+      print('❌ Error in emotion analysis: $e');
       return EmotionResult.error('Analysis failed: $e');
     }
   }
 
-  img.Image _cropAndEnhanceFace(img.Image image, Rect faceRect,
-      {double margin = 0.3}) {
+  img.Image _cropAndEnhanceFace(img.Image image, Rect faceRect, {double margin = 0.3}) {
     final imageWidth = image.width;
     final imageHeight = image.height;
 
@@ -320,45 +393,116 @@ class EmotionRecognitionService {
   }
 
   img.Image _enhanceImageQuality(img.Image image) {
-    // Apply image enhancements for better emotion recognition
+    // Light enhancement for better recognition
     var enhanced = image;
-
-    // Adjust contrast and brightness slightly
-    enhanced = img.adjustColor(enhanced,
-        contrast: 1.1, brightness: 1.05, saturation: 1.05);
-
-    // Apply slight gaussian blur to reduce noise
-    enhanced = img.gaussianBlur(enhanced, 1);
-
+    
+    try {
+      // More aggressive enhancement for better emotion recognition
+      enhanced = img.adjustColor(enhanced, 
+          contrast: 1.1, 
+          brightness: 1.05,
+          gamma: 0.9);
+      
+      // Optional: Apply histogram equalization for better contrast
+      enhanced = img.normalize(enhanced, 0, 255);
+    } catch (e) {
+      print('⚠️ Enhancement failed, using original: $e');
+      enhanced = image;
+    }
+    
     return enhanced;
   }
 
-  Float32List _preprocessImage(img.Image image) {
-    // Resize image to model input size
-    final resized = img.copyResize(image,
-        width: _inputSize,
-        height: _inputSize,
-        interpolation: img.Interpolation.cubic);
-
-    // Convert to Float32List and normalize
-    final input = Float32List(_inputSize * _inputSize * 3);
+  // Method 1: Uint8 preprocessing (current method)
+  Uint8List _preprocessImageAsUint8(img.Image image) {
+    final resized = img.copyResize(image, width: _inputSize, height: _inputSize);
+    final input = Uint8List(_inputSize * _inputSize * 3);
     int pixelIndex = 0;
-
+    
     for (int y = 0; y < _inputSize; y++) {
       for (int x = 0; x < _inputSize; x++) {
         final pixel = resized.getPixel(x, y);
-
-        // Normalize each channel with ImageNet stats
-        input[pixelIndex++] =
-            ((img.getRed(pixel) / 255.0) - _mean[0]) / _std[0];
-        input[pixelIndex++] =
-            ((img.getGreen(pixel) / 255.0) - _mean[1]) / _std[1];
-        input[pixelIndex++] =
-            ((img.getBlue(pixel) / 255.0) - _mean[2]) / _std[2];
+        
+        final red = img.getRed(pixel).clamp(0, 255);
+        final green = img.getGreen(pixel).clamp(0, 255);
+        final blue = img.getBlue(pixel).clamp(0, 255);
+        
+        if (pixelIndex < input.length - 2) {
+          input[pixelIndex++] = red;
+          input[pixelIndex++] = green;
+          input[pixelIndex++] = blue;
+        }
       }
     }
-
+    
     return input;
+  }
+
+  // Method 2: Float32 preprocessing (alternative approach)
+  Float32List _preprocessImageAsFloat32(img.Image image) {
+    final resized = img.copyResize(image, width: _inputSize, height: _inputSize);
+    final input = Float32List(_inputSize * _inputSize * 3);
+    int pixelIndex = 0;
+    
+    for (int y = 0; y < _inputSize; y++) {
+      for (int x = 0; x < _inputSize; x++) {
+        final pixel = resized.getPixel(x, y);
+        
+        // Normalize to [-1, 1] or [0, 1] range
+        final red = img.getRed(pixel) / 255.0;
+        final green = img.getGreen(pixel) / 255.0;
+        final blue = img.getBlue(pixel) / 255.0;
+        
+        if (pixelIndex < input.length - 2) {
+          input[pixelIndex++] = red;
+          input[pixelIndex++] = green;
+          input[pixelIndex++] = blue;
+        }
+      }
+    }
+    
+    return input;
+  }
+
+  // Method 3: Nested list preprocessing (from emotion_recognizer.dart)
+  List<List<List<List<int>>>> _preprocessImageAsNestedList(img.Image image) {
+    final resized = img.copyResize(image, width: _inputSize, height: _inputSize);
+    
+    return List.generate(
+      1,
+      (b) => List.generate(
+        _inputSize,
+        (y) => List.generate(
+          _inputSize,
+          (x) => List.generate(3, (c) {
+            final pixel = resized.getPixel(x, y);
+            if (c == 0) return img.getRed(pixel);
+            if (c == 1) return img.getGreen(pixel);
+            return img.getBlue(pixel);
+          }),
+        ),
+      ),
+    );
+  }
+
+  // Apply softmax to convert logits to probabilities
+  List<double> _applySoftmax(List<double> logits) {
+    if (logits.isEmpty) return [];
+    
+    // Find max value for numerical stability
+    final maxLogit = logits.reduce(math.max);
+    
+    // Compute exponentials
+    final expValues = logits.map((x) => math.exp(x - maxLogit)).toList();
+    
+    // Compute sum of exponentials
+    final sumExp = expValues.reduce((a, b) => a + b);
+    
+    // Avoid division by zero
+    if (sumExp == 0) return List.filled(logits.length, 1.0 / logits.length);
+    
+    // Compute softmax probabilities
+    return expValues.map((exp) => exp / sumExp).toList();
   }
 
   String _getConfidenceLevel(double confidence) {
@@ -370,16 +514,10 @@ class EmotionRecognitionService {
   // Camera image processing
   Future<EmotionResult> analyzeCameraImage(CameraImage cameraImage) async {
     try {
-      // Convert CameraImage to InputImage for face detection
       final inputImage = _cameraImageToInputImage(cameraImage);
-
-      // Detect faces
       final faces = await detectFaces(inputImage);
-
-      // Convert CameraImage to img.Image for processing
       final image = _cameraImageToImage(cameraImage);
 
-      // Analyze emotion with largest face if any detected
       Rect? faceRect;
       if (faces.isNotEmpty) {
         final largestFace = faces.reduce((a, b) =>
@@ -398,9 +536,6 @@ class EmotionRecognitionService {
   }
 
   InputImage _cameraImageToInputImage(CameraImage cameraImage) {
-    // Implementation depends on your camera setup
-    // This is a simplified version - you may need to adjust based on your camera configuration
-
     final metadata = InputImageMetadata(
       size: Size(cameraImage.width.toDouble(), cameraImage.height.toDouble()),
       rotation: InputImageRotation.rotation0deg,
@@ -415,9 +550,6 @@ class EmotionRecognitionService {
   }
 
   img.Image _cameraImageToImage(CameraImage cameraImage) {
-    // Convert YUV420 to RGB
-    // This is a simplified implementation - you may need to adjust
-
     final int width = cameraImage.width;
     final int height = cameraImage.height;
 
@@ -427,22 +559,23 @@ class EmotionRecognitionService {
 
     final img.Image image = img.Image(width, height);
 
-    // YUV to RGB conversion (simplified)
+    // YUV to RGB conversion with bounds checking
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         final int yIndex = y * width + x;
         final int uvIndex = (y ~/ 2) * (width ~/ 2) + (x ~/ 2);
 
-        final int yValue = yPlane[yIndex];
-        final int uValue = uPlane[uvIndex] - 128;
-        final int vValue = vPlane[uvIndex] - 128;
+        if (yIndex < yPlane.length && uvIndex < uPlane.length && uvIndex < vPlane.length) {
+          final int yValue = yPlane[yIndex];
+          final int uValue = uPlane[uvIndex] - 128;
+          final int vValue = vPlane[uvIndex] - 128;
 
-        int r = (yValue + 1.402 * vValue).round().clamp(0, 255);
-        int g =
-            (yValue - 0.344 * uValue - 0.714 * vValue).round().clamp(0, 255);
-        int b = (yValue + 1.772 * uValue).round().clamp(0, 255);
+          int r = (yValue + 1.402 * vValue).round().clamp(0, 255);
+          int g = (yValue - 0.344 * uValue - 0.714 * vValue).round().clamp(0, 255);
+          int b = (yValue + 1.772 * uValue).round().clamp(0, 255);
 
-        image.setPixelRgba(x, y, r, g, b, 255);
+          image.setPixelRgba(x, y, r, g, b, 255);
+        }
       }
     }
 
@@ -580,7 +713,6 @@ class EmotionTracker {
         recommendations.add("Keep tracking your emotions for better insights");
     }
 
-    // Add specific recommendations based on frequent emotions
     final mostFrequentEmotion = frequency.entries.isNotEmpty
         ? frequency.entries.reduce((a, b) => a.value > b.value ? a : b).key
         : null;
@@ -600,8 +732,7 @@ class EmotionTracker {
               "Consider anxiety management techniques or professional support");
           break;
         case 'happiness':
-          recommendations
-              .add("Share your joy with others and practice gratitude");
+          recommendations.add("Share your joy with others and practice gratitude");
           break;
       }
     }
