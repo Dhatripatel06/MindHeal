@@ -1,0 +1,5 @@
+android.libraryVariants.all { variant ->
+    if (android.namespace == null || android.namespace.isEmpty()) {
+        android.namespace = "com.example.defaultnamespace.${project.name.replace('-', '_')}"
+    }
+}
