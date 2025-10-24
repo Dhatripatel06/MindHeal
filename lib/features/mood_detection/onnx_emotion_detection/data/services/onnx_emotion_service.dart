@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:logger/logger.dart';
+// Import the onnxruntime package
+import 'package:onnxruntime/onnxruntime.dart';
 
 import '../../../data/models/emotion_result.dart';
 
@@ -18,6 +20,8 @@ class OnnxEmotionService {
   static const int _inputWidth = 224;
   static const int _inputHeight = 224;
   static const int _inputChannels = 3;
+  // The model's input shape [batch_size, channels, height, width]
+  static final _inputShape = [1, _inputChannels, _inputHeight, _inputWidth];
 
   // ImageNet normalization parameters (used in EfficientNet-B0)
   static const List<double> _meanImageNet = [0.485, 0.456, 0.406];
@@ -25,8 +29,10 @@ class OnnxEmotionService {
 
   final Logger _logger = Logger();
 
-  // Core components - EfficientNet-B0 AFEW model
-  Uint8List? _modelBytes;
+  // Core ONNX Runtime components
+  static OrtEnv? _env;
+  static OrtSession? _session;
+
   List<String> _emotionClasses = [];
   bool _isInitialized = false;
   bool _isInitializing = false;
@@ -55,6 +61,7 @@ class OnnxEmotionService {
     }
 
     _isInitializing = true;
+    _logger.i('Initializing ONNX Emotion Service...');
 
     try {
       // Load emotion classes from labels.txt
@@ -66,13 +73,11 @@ class OnnxEmotionService {
       // Load model
       await _loadModel();
 
-      // Validate model
-      await _validateModel();
-
       // Warm up model
       await _warmUpModel();
 
       _isInitialized = true;
+      _logger.i('✅ ONNX Emotion Service Initialized Successfully.');
       return true;
     } catch (e, stackTrace) {
       _logger.e('❌ Failed to initialize ONNX emotion detection service',
@@ -94,8 +99,10 @@ class OnnxEmotionService {
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
           .toList();
-
+      _logger.i('Loaded emotion classes: $_emotionClasses');
+      if (_emotionClasses.isEmpty) throw Exception('No classes loaded');
     } catch (e) {
+      _logger.w('Failed to load labels from asset, using fallback', error: e);
       // Fallback to hardcoded classes for AFEW dataset
       _emotionClasses = [
         'Anger',
@@ -110,110 +117,91 @@ class OnnxEmotionService {
     }
   }
 
-  /// Initialize ONNX Runtime with mobile-optimized settings
+  /// Initialize ONNX Runtime
   Future<void> _initializeOnnxRuntime() async {
     try {
-      // Load the actual ONNX model bytes for processing
+      _env = OrtEnv.instance;
     } catch (e) {
-      _logger.e('❌ Failed to configure ONNX model processing', error: e);
+      _logger.e('❌ Failed to initialize ONNX Runtime environment', error: e);
       rethrow;
     }
   }
 
-  /// Load model from assets to local storage and create session
+  /// Load model from assets and create inference session
   Future<void> _loadModel() async {
+    if (_env == null) throw Exception('ONNX Runtime not initialized');
+
     try {
       // Load model bytes from assets
-      final byteData = await rootBundle.load(_modelAssetPath);
-      _modelBytes = byteData.buffer
-          .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
-
+      final modelBytes = await rootBundle.load(_modelAssetPath);
+      final sessionOptions = OrtSessionOptions();
+      
+      // Use OrtSession.fromBuffer to create the session
+      _session = OrtSession.fromBuffer(
+        modelBytes.buffer
+            .asUint8List(modelBytes.offsetInBytes, modelBytes.lengthInBytes),
+        sessionOptions,
+      );
+      _logger.i('ONNX session created successfully.');
     } catch (e) {
-      _logger.w('⚠️ Could not load ONNX model from assets: $e');
-      // Create mock model bytes for testing/fallback
-      _modelBytes = Uint8List.fromList(List.generate(1000, (i) => i % 256));
-      _logger.d('📋 Using mock model data for EfficientNet-B0 simulation');
-    }
-  }
-
-  /// Validate model with test input
-  Future<void> _validateModel() async {
-    try {
-      final testInput =
-          Float32List(_inputWidth * _inputHeight * _inputChannels);
-      for (int i = 0; i < testInput.length; i++) {
-        testInput[i] = Random().nextDouble() * 2.0 - 1.0;
-      }
-
-      final result = await _runInference(testInput);
-
-      if (result.length != _emotionClasses.length) {
-        throw Exception(
-            'Model output size mismatch. Expected ${_emotionClasses.length}, got ${result.length}');
-      }
-
-    } catch (e) {
-      _logger.e('❌ Model validation failed', error: e);
+      _logger.e('❌ Could not load ONNX model or create session', error: e);
       rethrow;
     }
   }
 
   /// Warm up model with dummy inferences
   Future<void> _warmUpModel() async {
+    if (_session == null || !_isInitialized) return;
     try {
+      _logger.i('Warming up model...');
       for (int i = 0; i < 3; i++) {
         final dummyInput =
             Float32List(_inputWidth * _inputHeight * _inputChannels);
-        for (int j = 0; j < dummyInput.length; j++) {
-          dummyInput[j] = Random().nextDouble() * 2.0 - 1.0;
-        }
         await _runInference(dummyInput);
       }
+      _logger.i('Model warm-up complete.');
     } catch (e) {
       _logger.e('❌ Model warm-up failed', error: e);
-      rethrow;
+      // Don't rethrow, warm-up is not critical
     }
   }
 
-  /// Detect emotions from image bytes with enhanced accuracy
+  /// Detect emotions from image bytes
   Future<EmotionResult> detectEmotions(Uint8List imageBytes) async {
-    if (!_isInitialized) {
-      throw Exception('OnnxEmotionService not initialized');
+    if (!_isInitialized || _session == null) {
+      throw Exception(
+          'OnnxEmotionService not initialized. Call initialize() first.');
     }
 
     final stopwatch = Stopwatch()..start();
 
     try {
-      // Preprocess image with advanced enhancement
+      // Preprocess image
       final preprocessedInput = await _preprocessImage(imageBytes);
 
-      // Run inference with confidence boost
+      // Run inference
       final probabilities = await _runInference(preprocessedInput);
+      
+      // Apply Softmax to get probabilities
+      final probabilitiesSoftmax = _softmax(probabilities);
 
-      // Process results with enhanced accuracy
+      // Process results
       final emotions = <String, double>{};
       for (int i = 0; i < _emotionClasses.length; i++) {
-        emotions[_emotionClasses[i]] = probabilities[i];
+        emotions[_emotionClasses[i]] = probabilitiesSoftmax[i];
       }
 
-      // Apply confidence smoothing and normalization
-      final normalizedEmotions = _normalizeEmotions(emotions);
-
-      // Find dominant emotion with confidence threshold
-      final maxEntry = normalizedEmotions.entries
-          .reduce((a, b) => a.value > b.value ? a : b);
-
-      // Apply confidence boost for better real-world accuracy
-      final boostedConfidence =
-          _applyConfidenceBoost(maxEntry.value, maxEntry.key);
+      // Find dominant emotion
+      final maxEntry =
+          emotions.entries.reduce((a, b) => a.value > b.value ? a : b);
 
       // Update performance metrics
       _updatePerformanceMetrics(stopwatch.elapsedMilliseconds.toDouble());
 
       final result = EmotionResult(
         emotion: maxEntry.key,
-        confidence: boostedConfidence,
-        allEmotions: normalizedEmotions,
+        confidence: maxEntry.value,
+        allEmotions: emotions,
         timestamp: DateTime.now(),
         processingTimeMs: stopwatch.elapsedMilliseconds,
       );
@@ -233,7 +221,7 @@ class OnnxEmotionService {
     return detectEmotions(imageBytes);
   }
 
-  /// Preprocess image for model input
+  /// Preprocess image for model input (NCHW format)
   Future<Float32List> _preprocessImage(Uint8List imageBytes) async {
     try {
       // Decode image
@@ -244,8 +232,8 @@ class OnnxEmotionService {
       final resized =
           img.copyResize(image, width: _inputWidth, height: _inputHeight);
 
-      // Convert to RGB and normalize using ImageNet parameters
-      final input = Float32List(_inputWidth * _inputHeight * _inputChannels);
+      // Convert to NCHW Float32List and normalize
+      final input = Float32List(1 * _inputChannels * _inputHeight * _inputWidth);
 
       int index = 0;
       // Format: NCHW (batch, channels, height, width)
@@ -275,103 +263,81 @@ class OnnxEmotionService {
     }
   }
 
-  /// Run ONNX model inference using enhanced simulation
+  /// Run ONNX model inference
   Future<List<double>> _runInference(Float32List input) async {
+    if (_session == null) throw Exception('ONNX session not initialized');
+
+    OrtValue? inputOrt;
+    OrtRunOptions? runOptions;
+    List<OrtValue?>? outputs;
+
     try {
-      if (_modelBytes == null) throw Exception('ONNX model not loaded');
+      // Create the input tensor
+      inputOrt = OrtValue.createTensor(input, _inputShape);
 
-      // Try to use native platform channel for ONNX inference
-      try {
-        const platform = MethodChannel('mental_wellness_app/onnx');
-        final result = await platform.invokeMethod('runInference', {
-          'modelBytes': _modelBytes,
-          'inputData': input,
-          'inputShape': [1, _inputChannels, _inputHeight, _inputWidth],
-          'outputShape': [1, _emotionClasses.length],
-        });
+      // Get input and output names from the model
+      final inputNames = _session!.inputNames;
+      final outputNames = _session!.outputNames;
+      
+      if (inputNames.isEmpty) throw Exception("Model has no inputs");
+      if (outputNames.isEmpty) throw Exception("Model has no outputs");
 
-        if (result is List) {
-          return List<double>.from(result);
-        }
-      } catch (platformError) {
-        // Silently fall back to enhanced simulation
+      final inputs = {inputNames.first: inputOrt};
+
+      // Create run options
+      runOptions = OrtRunOptions();
+
+      // Run the model
+      outputs = _session!.run(runOptions, inputs);
+
+      if (outputs.isEmpty || outputs.first == null) {
+        throw Exception('Model execution returned no outputs');
       }
 
-      // Use enhanced EfficientNet-B0 AFEW simulation
-      return _runEnhancedSimulation(input);
+      // Get the output data (should be a List<List<double>>)
+      final outputData = outputs.first!.value as List<List<dynamic>>;
+      
+      // Flatten and convert to List<double>
+      final probabilities = outputData.first.map((e) => e as double).toList();
+
+      if (probabilities.length != _emotionClasses.length) {
+         _logger.e('Output mismatch: Model output ${probabilities.length} classes, but labels file has ${_emotionClasses.length}');
+         throw Exception('Model output size mismatch');
+      }
+
+      return probabilities;
     } catch (e) {
       _logger.e('❌ ONNX inference failed', error: e);
       rethrow;
+    } finally {
+      // IMPORTANT: Release resources to avoid memory leaks
+      inputOrt?.release();
+      runOptions?.release();
+      outputs?.forEach((o) => o?.release());
     }
   }
 
-  /// Enhanced simulation with better confidence scores
-  Future<List<double>> _runEnhancedSimulation(Float32List input) async {
-    // Create more realistic predictions based on image content analysis
-    final random = Random(input.hashCode); // Deterministic based on input
+  /// Apply softmax to the model output logits
+  List<double> _softmax(List<double> logits) {
+    if (logits.isEmpty) return [];
 
-    // Analyze input features to generate contextual predictions
-    double brightness = 0.0;
-    double contrast = 0.0;
-    double complexity = 0.0;
+    final double maxLogit = logits.reduce(max);
+    final List<double> expValues =
+        logits.map((logit) => exp(logit - maxLogit)).toList();
 
-    // Calculate image statistics from normalized input
-    for (int i = 0; i < input.length; i += 100) {
-      // Sample every 100th pixel
-      brightness += input[i].abs();
-      contrast += (input[i] - brightness / (i / 100 + 1)).abs();
-      complexity += input[i] * input[min(i + 1, input.length - 1)];
+    final double sumExp = expValues.reduce((a, b) => a + b);
+
+    if (sumExp == 0) {
+      return List<double>.filled(logits.length, 1.0 / logits.length);
     }
-
-    brightness /= (input.length / 100);
-    contrast /= (input.length / 100);
-    complexity /= (input.length / 100);
-
-    // Generate realistic emotion probabilities based on image characteristics
-    final probabilities = List<double>.filled(_emotionClasses.length, 0.0);
-
-    // Base probabilities influenced by image characteristics
-    final baseProbs = [
-      0.1 + (complexity.abs() * 0.4), // Anger - complex images
-      0.05 + (contrast * 0.2), // Contempt - high contrast
-      0.08 + (brightness < 0.3 ? 0.3 : 0.1), // Disgust - darker images
-      0.12 + (complexity.abs() * 0.3), // Fear - complex/chaotic
-      0.25 + (brightness > 0.5 ? 0.4 : 0.1), // Happy - brighter images
-      0.2 +
-          (brightness > 0.3 && brightness < 0.7
-              ? 0.3
-              : 0.0), // Neutral - balanced
-      0.1 + (brightness < 0.4 ? 0.3 : 0.1), // Sad - darker images
-      0.1 + (contrast > 0.3 ? 0.25 : 0.05), // Surprise - high contrast
-    ];
-
-    // Add some realistic randomness
-    for (int i = 0; i < probabilities.length; i++) {
-      probabilities[i] = baseProbs[i] + (random.nextDouble() - 0.5) * 0.1;
-      probabilities[i] =
-          probabilities[i].clamp(0.05, 0.95); // Ensure realistic range
-    }
-
-    // Ensure one emotion is clearly dominant (addressing low confidence issue)
-    final maxIndex = probabilities.indexOf(probabilities.reduce(max));
-    probabilities[maxIndex] =
-        max(probabilities[maxIndex], 0.45); // Minimum 45% confidence
-
-    // Normalize to sum to 1.0 (softmax-like)
-    final sum = probabilities.reduce((a, b) => a + b);
-    for (int i = 0; i < probabilities.length; i++) {
-      probabilities[i] /= sum;
-    }
-
-    return probabilities;
+    
+    return expValues.map((val) => val / sumExp).toList();
   }
 
   /// Update performance metrics
   void _updatePerformanceMetrics(double inferenceTime) {
     _inferenceTimes.add(inferenceTime);
     _totalInferences++;
-
-    // Keep only recent 100 measurements
     if (_inferenceTimes.length > 100) {
       _inferenceTimes.removeAt(0);
     }
@@ -380,43 +346,30 @@ class OnnxEmotionService {
   /// Get performance statistics
   PerformanceStats getPerformanceStats() {
     if (_inferenceTimes.isEmpty) return PerformanceStats.empty();
-
     final avgTime =
         _inferenceTimes.reduce((a, b) => a + b) / _inferenceTimes.length;
-    final maxTime = _inferenceTimes.reduce(max);
-    final minTime = _inferenceTimes.reduce(min);
-
     return PerformanceStats(
       averageInferenceTimeMs: avgTime,
-      maxInferenceTimeMs: maxTime,
-      minInferenceTimeMs: minTime,
+      maxInferenceTimeMs: _inferenceTimes.reduce(max),
+      minInferenceTimeMs: _inferenceTimes.reduce(min),
       totalInferences: _totalInferences,
     );
   }
 
-  /// Get dominant emotion from predictions
-  String getDominantEmotion(Map<String, double> predictions) {
-    return predictions.entries.reduce((a, b) => a.value > b.value ? a : b).key;
-  }
-
-  /// Get dominant confidence from predictions
-  double getDominantConfidence(Map<String, double> predictions) {
-    return predictions.values.reduce(max);
-  }
-
   /// Check if service is ready
-  bool get isReady => _isInitialized && _modelBytes != null;
+  bool get isReady => _isInitialized && _session != null;
 
   /// Get emotion classes
   List<String> get emotionClasses => List.unmodifiable(_emotionClasses);
 
-  /// Get labels (alias for emotionClasses)
-  List<String> get labels => emotionClasses;
-
   /// Dispose resources
   Future<void> dispose() async {
+    _logger.i('Disposing ONNX service...');
     try {
-      _modelBytes = null;
+      _session?.release();
+      // Note: OrtEnv is a singleton and releasing it might affect other services
+      // _env?.release(); // Uncomment if you are sure this is the only user
+      _session = null;
       _isInitialized = false;
       _inferenceTimes.clear();
       _logger.i('🗑️ ONNX emotion detection service disposed');
@@ -425,54 +378,7 @@ class OnnxEmotionService {
     }
   }
 
-  /// Normalize emotion probabilities for better accuracy
-  Map<String, double> _normalizeEmotions(Map<String, double> emotions) {
-    // Apply softmax normalization
-    final maxValue = emotions.values.reduce((a, b) => a > b ? a : b);
-    final expValues =
-        emotions.map((key, value) => MapEntry(key, exp(value - maxValue)));
-    final sumExp = expValues.values.reduce((a, b) => a + b);
-
-    // Normalize to probabilities
-    final normalized =
-        expValues.map((key, value) => MapEntry(key, value / sumExp));
-
-    // Apply smoothing factor for real-world accuracy
-    const smoothingFactor = 0.1;
-    final smoothed = normalized.map((key, value) {
-      final smoothedValue =
-          value * (1 - smoothingFactor) + smoothingFactor / emotions.length;
-      return MapEntry(key, smoothedValue);
-    });
-
-    return smoothed;
-  }
-
-  /// Apply confidence boost based on emotion type and context
-  double _applyConfidenceBoost(double originalConfidence, String emotion) {
-    // Define confidence multipliers for different emotions based on real-world performance
-    const emotionMultipliers = {
-      'happy': 1.15, // Usually well-detected
-      'sad': 1.10, // Good detection rate
-      'anger': 1.12, // Clear emotional expression
-      'surprise': 1.08, // Sometimes confused with fear
-      'fear': 1.05, // Can be subtle
-      'disgust': 1.07, // Moderate detection
-      'neutral': 1.20, // Often the most confident
-      'contempt': 1.03, // Subtle expression
-    };
-
-    final multiplier = emotionMultipliers[emotion.toLowerCase()] ?? 1.0;
-    var boostedConfidence = originalConfidence * multiplier;
-
-    // Apply sigmoid function for smoother confidence curves
-    boostedConfidence = 1.0 / (1.0 + exp(-6 * (boostedConfidence - 0.5)));
-
-    // Ensure confidence stays within valid range and addresses low confidence issue
-    // This directly fixes the 10-19% confidence problem reported by the user
-    return max(
-        0.35, boostedConfidence.clamp(0.0, 0.95)); // Minimum 35% confidence
-  }
+  // --- Methods below are for real-time/batch processing ---
 
   /// Enhanced real-time detection with frame stabilization
   Future<EmotionResult> detectEmotionsRealTime(
@@ -485,21 +391,15 @@ class OnnxEmotionService {
     if (previousResult != null && stabilizationFactor > 0) {
       // Apply temporal stabilization to reduce flickering
       final stabilizedEmotions = <String, double>{};
-
       for (final emotion in _emotionClasses) {
         final currentValue = currentResult.allEmotions[emotion] ?? 0.0;
         final previousValue = previousResult.allEmotions[emotion] ?? 0.0;
-
-        // Weighted average for stabilization
         final stabilizedValue = currentValue * (1 - stabilizationFactor) +
             previousValue * stabilizationFactor;
         stabilizedEmotions[emotion] = stabilizedValue;
       }
-
-      // Find new dominant emotion
       final maxEntry = stabilizedEmotions.entries
           .reduce((a, b) => a.value > b.value ? a : b);
-
       return EmotionResult(
         emotion: maxEntry.key,
         confidence: maxEntry.value,
@@ -508,44 +408,24 @@ class OnnxEmotionService {
         processingTimeMs: currentResult.processingTimeMs,
       );
     }
-
     return currentResult;
   }
 
-  /// Batch processing for multiple images with optimized performance
+  /// Batch processing for multiple images
   Future<List<EmotionResult>> detectEmotionsBatch(
       List<Uint8List> imageBytesList) async {
     if (!_isInitialized) {
       throw Exception('OnnxEmotionService not initialized');
     }
-
     final results = <EmotionResult>[];
     final stopwatch = Stopwatch()..start();
-
-    try {
-      _logger.d(
-          '🎯 Starting batch emotion detection for ${imageBytesList.length} images...');
-
-      for (int i = 0; i < imageBytesList.length; i++) {
-        final imageBytes = imageBytesList[i];
-        final result = await detectEmotions(imageBytes);
-        results.add(result);
-
-        // Log progress for large batches
-        if ((i + 1) % 10 == 0 || i == imageBytesList.length - 1) {
-          _logger.d('📊 Processed ${i + 1}/${imageBytesList.length} images');
-        }
-      }
-
-      _logger.d(
-          '🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms');
-      return results;
-    } catch (e, stackTrace) {
-      _logger.e('❌ Batch processing failed', error: e, stackTrace: stackTrace);
-      rethrow;
-    } finally {
-      stopwatch.stop();
+    _logger.d('🎯 Starting batch detection for ${imageBytesList.length} images...');
+    for (int i = 0; i < imageBytesList.length; i++) {
+      final result = await detectEmotions(imageBytesList[i]);
+      results.add(result);
     }
+    _logger.d('🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms');
+    return results;
   }
 }
 
