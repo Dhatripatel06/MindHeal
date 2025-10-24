@@ -50,17 +50,8 @@ class EmotionProvider with ChangeNotifier {
   int get totalDetections => _totalDetections;
   int get averageProcessingTime => _averageProcessingTime;
 
-  /// Get available emotion labels
-  List<String> get emotionLabels => [
-        'happy',
-        'sad',
-        'angry',
-        'surprised',
-        'fearful',
-        'disgusted',
-        'neutral',
-        'contempt'
-      ];
+  /// Get available emotion labels from the service
+  List<String> get emotionLabels => _emotionService.emotionClasses;
 
   /// Get current dominant emotion
   String get currentEmotion => _currentResult?.emotion ?? 'none';
@@ -80,11 +71,7 @@ class EmotionProvider with ChangeNotifier {
 
     try {
       print('🚀 Initializing emotion detection service...');
-
-      // Initialize ONNX service
-      await _emotionService.initialize();
-
-      _isInitialized = true;
+      _isInitialized = await _emotionService.initialize();
       print('✅ Emotion detection service initialized successfully');
     } catch (e) {
       _setError('Failed to initialize emotion detection: $e');
@@ -104,22 +91,24 @@ class EmotionProvider with ChangeNotifier {
       _setLoading(true);
       _clearError();
 
-      // Get available cameras
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         throw Exception('No cameras available');
       }
 
-      // Use provided camera or default to front camera (index 1) for selfies
-      final selectedCamera =
-          camera ?? (cameras.length > 1 ? cameras[1] : cameras[0]);
+      // Default to front camera if available
+      final selectedCamera = camera ??
+          cameras.firstWhere(
+            (c) => c.lensDirection == CameraLensDirection.front,
+            orElse: () => cameras.first,
+          );
 
       // Initialize camera controller
       _cameraController = CameraController(
         selectedCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: ImageFormatGroup.jpeg, // Ensure JPEG output
       );
 
       await _cameraController!.initialize();
@@ -202,21 +191,18 @@ class EmotionProvider with ChangeNotifier {
       }
     } catch (e) {
       print('⚠️ Error in real-time detection: $e');
-      // Don't stop real-time detection for individual frame errors
     }
   }
 
-  /// Detect emotion from image file with enhanced accuracy
+  /// Detect emotion from image file
   Future<EmotionResult?> detectEmotionFromFile(File imageFile) async {
     if (!_isInitialized) {
       throw Exception('Service not initialized. Call initialize() first.');
     }
 
     try {
-      // Convert file to bytes for enhanced processing
       final imageBytes = await imageFile.readAsBytes();
 
-      // Use enhanced detection with previous result for stability
       final result = _emotionHistory.isNotEmpty
           ? await _emotionService.detectEmotionsRealTime(imageBytes,
               previousResult: _emotionHistory.last, stabilizationFactor: 0.3)
@@ -251,13 +237,9 @@ class EmotionProvider with ChangeNotifier {
       _setLoading(true);
       _clearError();
 
-      // Capture image
       final XFile imageFile = await _cameraController!.takePicture();
-
-      // Detect emotion
       final result = await detectEmotionFromFile(File(imageFile.path));
 
-      // Clean up
       try {
         await File(imageFile.path).delete();
       } catch (e) {
@@ -277,13 +259,10 @@ class EmotionProvider with ChangeNotifier {
   /// Update detection settings
   void updateDetectionInterval(Duration interval) {
     _detectionInterval = interval;
-
-    // Restart detection with new interval if currently running
     if (_realTimeDetection) {
       stopRealTimeDetection();
       startRealTimeDetection();
     }
-
     notifyListeners();
   }
 
@@ -314,7 +293,6 @@ class EmotionProvider with ChangeNotifier {
       };
     }
 
-    // Count emotions
     final emotionCounts = <String, int>{};
     double totalConfidence = 0.0;
 
@@ -326,7 +304,6 @@ class EmotionProvider with ChangeNotifier {
       }
     }
 
-    // Find most frequent emotion
     final dominantEmotion = emotionCounts.isNotEmpty
         ? emotionCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key
         : 'none';
@@ -349,24 +326,17 @@ class EmotionProvider with ChangeNotifier {
 
   void _addToHistory(EmotionResult result) {
     _emotionHistory.add(result);
-
-    // Keep history within size limit
     if (_emotionHistory.length > _maxHistorySize) {
       _emotionHistory.removeAt(0);
     }
-
     _totalDetections++;
   }
 
   void _updatePerformanceMetrics(int processingTime) {
     _recentProcessingTimes.add(processingTime);
-
-    // Keep only recent processing times (last 20)
     if (_recentProcessingTimes.length > 20) {
       _recentProcessingTimes.removeAt(0);
     }
-
-    // Calculate average
     _averageProcessingTime = _recentProcessingTimes.isEmpty
         ? 0
         : _recentProcessingTimes.reduce((a, b) => a + b) ~/
@@ -393,7 +363,8 @@ class EmotionProvider with ChangeNotifier {
   void dispose() {
     stopRealTimeDetection();
     _cameraController?.dispose();
-    _emotionService.dispose();
+    // Do not dispose the singleton service here
+    // _emotionService.dispose(); 
     super.dispose();
   }
 }

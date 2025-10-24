@@ -73,9 +73,6 @@ class OnnxEmotionService {
       // Load model
       await _loadModel();
 
-      // Warm up model
-      await _warmUpModel();
-
       _isInitialized = true;
       _logger.i('✅ ONNX Emotion Service Initialized Successfully.');
       return true;
@@ -149,14 +146,6 @@ class OnnxEmotionService {
     }
   }
 
-  /// Warm up model with dummy inferences
-  Future<void> _warmUpModel() async {
-    // Note: Warm-up is disabled until initialization is fully stable
-    // to avoid masking initialization errors.
-    // You can re-enable this after confirming the model works.
-    _logger.i('Model warm-up skipped for now.');
-  }
-
   /// Detect emotions from image bytes
   Future<EmotionResult> detectEmotions(Uint8List imageBytes) async {
     if (!_isInitialized || _session == null) {
@@ -203,17 +192,83 @@ class OnnxEmotionService {
       return result;
     } catch (e, stackTrace) {
       _logger.e('❌ Emotion detection failed', error: e, stackTrace: stackTrace);
-      rethrow;
+      return EmotionResult.error('Detection failed: $e'); // Return error result
     } finally {
       stopwatch.stop();
     }
   }
+
+  // --- THIS IS THE NEWLY ADDED METHOD ---
+  /// Real-time detection with frame stabilization
+  Future<EmotionResult> detectEmotionsRealTime(
+    Uint8List imageBytes, {
+    EmotionResult? previousResult,
+    double stabilizationFactor = 0.3,
+  }) async {
+    // Get the current, real detection result
+    final currentResult = await detectEmotions(imageBytes);
+
+    // If current detection failed, return the error
+    if (currentResult.hasError) {
+      return currentResult;
+    }
+
+    // Apply stabilization if previous result is valid
+    if (previousResult != null && stabilizationFactor > 0 && !previousResult.hasError) {
+      // Apply temporal stabilization to reduce flickering
+      final stabilizedEmotions = <String, double>{};
+
+      for (final emotion in _emotionClasses) {
+        final currentValue = currentResult.allEmotions[emotion] ?? 0.0;
+        final previousValue = previousResult.allEmotions[emotion] ?? 0.0;
+
+        // Weighted average for stabilization
+        final stabilizedValue = currentValue * (1 - stabilizationFactor) +
+            previousValue * stabilizationFactor;
+        stabilizedEmotions[emotion] = stabilizedValue;
+      }
+
+      // Find new dominant emotion from stabilized values
+      final maxEntry = stabilizedEmotions.entries
+          .reduce((a, b) => a.value > b.value ? a : b);
+
+      return EmotionResult(
+        emotion: maxEntry.key,
+        confidence: maxEntry.value,
+        allEmotions: stabilizedEmotions,
+        timestamp: DateTime.now(),
+        processingTimeMs: currentResult.processingTimeMs,
+      );
+    }
+
+    // Return the raw result if no stabilization is needed or possible
+    return currentResult;
+  }
+  // --- END OF NEWLY ADDED METHOD ---
 
   /// Detect emotions from image file
   Future<EmotionResult> detectEmotionsFromFile(File imageFile) async {
     final imageBytes = await imageFile.readAsBytes();
     return detectEmotions(imageBytes);
   }
+
+  /// Batch processing for multiple images
+  Future<List<EmotionResult>> detectEmotionsBatch(
+      List<Uint8List> imageBytesList) async {
+    if (!_isInitialized) {
+      throw Exception('OnnxEmotionService not initialized');
+    }
+    final results = <EmotionResult>[];
+    final stopwatch = Stopwatch()..start();
+    _logger.d('🎯 Starting batch detection for ${imageBytesList.length} images...');
+    for (int i = 0; i < imageBytesList.length; i++) {
+      final result = await detectEmotions(imageBytesList[i]);
+      results.add(result);
+    }
+    _logger.d('🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms');
+    return results;
+  }
+
 
   /// Preprocess image for model input (NCHW format)
   Future<Float32List> _preprocessImage(Uint8List imageBytes) async {
@@ -267,7 +322,6 @@ class OnnxEmotionService {
 
     try {
       // Create the input tensor
-      // THIS IS THE FIX: Use OrtValueTensor.createTensorWithDataList
       inputOrt = OrtValueTensor.createTensorWithDataList(input, _inputShape);
 
       // Get input and output names from the model
@@ -283,7 +337,6 @@ class OnnxEmotionService {
       runOptions = OrtRunOptions();
 
       // Run the model asynchronously
-      // THIS IS THE SECOND FIX: Use runAsync
       outputs = await _session!.runAsync(runOptions, inputs);
 
       if (outputs == null || outputs.isEmpty || outputs.first == null) {
@@ -375,8 +428,6 @@ class OnnxEmotionService {
     _logger.i('Disposing ONNX service...');
     try {
       _session?.release();
-      // Note: OrtEnv is a singleton and releasing it might affect other services
-      // _env?.release();
       _session = null;
       _isInitialized = false;
       _inferenceTimes.clear();
@@ -416,7 +467,3 @@ class PerformanceStats {
         'total: $totalInferences)';
   }
 }
-
-// Ensure the EmotionResult class is imported or defined
-// I'm assuming it's in the import:
-// import '../../../data/models/emotion_result.dart';

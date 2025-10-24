@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async'; // Added for Timer
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
@@ -17,8 +18,7 @@ class ImageDetectionProvider with ChangeNotifier {
   // Camera related
   CameraController? _cameraController;
   bool _isRealTimeMode = false;
-  int _frameSkipCount = 0;
-  static const int FRAME_SKIP = 3; // Process every 3rd frame
+  Timer? _detectionTimer; // Use a timer instead of image stream
 
   // Getters
   bool get isInitialized => _isInitialized;
@@ -69,11 +69,12 @@ class ImageDetectionProvider with ChangeNotifier {
               orElse: () => cameras.first,
             );
 
+      // Set imageFormatGroup to jpeg to ensure takePicture() returns a JPEG
       _cameraController = CameraController(
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: ImageFormatGroup.jpeg, 
       );
 
       await _cameraController!.initialize();
@@ -88,6 +89,7 @@ class ImageDetectionProvider with ChangeNotifier {
   /// Switch camera (front/back)
   Future<void> switchCamera() async {
     if (_cameraController == null) return;
+    if (_isRealTimeMode) await stopRealTimeDetection(); // Stop timer before switching
 
     try {
       final currentDirection = _cameraController!.description.lensDirection;
@@ -103,40 +105,43 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Start real-time emotion detection
   Future<void> startRealTimeDetection() async {
-    if (!_isInitialized || _cameraController == null) {
+    if (!_isInitialized || _cameraController == null || !_cameraController!.value.isInitialized) {
       throw Exception('Initialize camera first');
     }
+    if (_isRealTimeMode) return; // Already running
 
     _isRealTimeMode = true;
-    _frameSkipCount = 0;
     notifyListeners();
 
-    _cameraController!.startImageStream((CameraImage image) async {
-      // Skip frames to optimize performance
-      _frameSkipCount++;
-      if (_frameSkipCount % FRAME_SKIP != 0) return;
-
-      if (_isProcessing) return;
+    // Start a periodic timer to take pictures
+    _detectionTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async {
+      if (_isProcessing) return; // Skip if already processing
 
       try {
         _isProcessing = true;
 
-        // Convert CameraImage to File (save temporarily)
-        final tempFile = await _saveCameraImage(image);
+        // 1. Take a picture
+        final XFile imageFile = await _cameraController!.takePicture();
+        
+        // 2. Read bytes
+        final imageBytes = await imageFile.readAsBytes();
 
-        // Process image with enhanced real-time detection
-        final imageBytes = await tempFile.readAsBytes();
+        // 3. Process image
         final result = _history.isNotEmpty
             ? await _emotionService.detectEmotionsRealTime(imageBytes,
                 previousResult: _history.first,
-                stabilizationFactor: 0.3) // Higher stabilization for real-time
+                stabilizationFactor: 0.3)
             : await _emotionService.detectEmotions(imageBytes);
 
         _currentResult = result;
         _addToHistory(result);
 
-        // Clean up temp file
-        await tempFile.delete();
+        // 4. Clean up temp file
+        try {
+          await File(imageFile.path).delete();
+        } catch (e) {
+          print('Warning: Failed to delete temp file: $e');
+        }
 
         _isProcessing = false;
         notifyListeners();
@@ -149,16 +154,14 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Stop real-time emotion detection
   Future<void> stopRealTimeDetection() async {
-    if (_cameraController != null &&
-        _cameraController!.value.isStreamingImages) {
-      await _cameraController!.stopImageStream();
-    }
+    _detectionTimer?.cancel();
+    _detectionTimer = null;
     _isRealTimeMode = false;
     _isProcessing = false;
     notifyListeners();
   }
 
-  /// Process single image file with enhanced accuracy
+  /// Process single image file
   Future<EmotionResult> processImage(File imageFile) async {
     if (!_isInitialized) {
       throw Exception('Recognizer not initialized');
@@ -169,10 +172,8 @@ class ImageDetectionProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      // Convert file to bytes for enhanced processing
       final imageBytes = await imageFile.readAsBytes();
 
-      // Use enhanced detection with previous result for stability
       final result = _history.isNotEmpty
           ? await _emotionService.detectEmotionsRealTime(imageBytes,
               previousResult: _history.first, stabilizationFactor: 0.2)
@@ -193,7 +194,7 @@ class ImageDetectionProvider with ChangeNotifier {
     }
   }
 
-  /// Process batch of images with optimized performance
+  /// Process batch of images
   Future<List<EmotionResult>> processBatch(List<File> imageFiles) async {
     if (!_isInitialized) {
       throw Exception('Recognizer not initialized');
@@ -204,17 +205,14 @@ class ImageDetectionProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      // Convert files to bytes
       final imageBytesList = <Uint8List>[];
       for (final file in imageFiles) {
         final bytes = await file.readAsBytes();
         imageBytesList.add(bytes);
       }
 
-      // Use batch processing for efficiency
       final results = await _emotionService.detectEmotionsBatch(imageBytesList);
 
-      // Update history with all results
       for (final result in results) {
         _addToHistory(result);
       }
@@ -235,25 +233,11 @@ class ImageDetectionProvider with ChangeNotifier {
     }
   }
 
-  /// Save camera image to temporary file
-  Future<File> _saveCameraImage(CameraImage image) async {
-    final tempDir = Directory.systemTemp;
-    final tempFile = File(
-        '${tempDir.path}/temp_camera_${DateTime.now().millisecondsSinceEpoch}.jpg');
-
-    // Convert YUV to RGB (simplified conversion)
-    // For production, consider using a more robust conversion
-    final bytes = image.planes[0].bytes;
-    await tempFile.writeAsBytes(bytes);
-
-    return tempFile;
-  }
+  // _saveCameraImage is no longer needed and has been removed.
 
   /// Add result to history
   void _addToHistory(EmotionResult result) {
     _history.insert(0, result);
-
-    // Keep only last 50 results
     if (_history.length > 50) {
       _history = _history.take(50).toList();
     }
@@ -268,18 +252,15 @@ class ImageDetectionProvider with ChangeNotifier {
   /// Get emotion statistics from history
   Map<String, int> getEmotionStatistics() {
     Map<String, int> stats = {};
-
     for (final result in _history) {
       stats[result.emotion] = (stats[result.emotion] ?? 0) + 1;
     }
-
     return stats;
   }
 
   /// Get average confidence
   double getAverageConfidence() {
     if (_history.isEmpty) return 0.0;
-
     double total = _history.fold(0.0, (sum, result) => sum + result.confidence);
     return total / _history.length;
   }
@@ -311,8 +292,10 @@ class ImageDetectionProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _detectionTimer?.cancel();
     _cameraController?.dispose();
-    _emotionService.dispose();
+    // Do not dispose the singleton service here, let it live for the app
+    // _emotionService.dispose(); 
     super.dispose();
   }
 }
