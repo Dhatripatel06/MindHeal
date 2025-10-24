@@ -151,29 +151,22 @@ class OnnxEmotionService {
 
   /// Warm up model with dummy inferences
   Future<void> _warmUpModel() async {
-    if (_session == null || !_isInitialized) return;
-    try {
-      _logger.i('Warming up model...');
-      for (int i = 0; i < 3; i++) {
-        final dummyInput =
-            Float32List(_inputWidth * _inputHeight * _inputChannels);
-        await _runInference(dummyInput);
-      }
-      _logger.i('Model warm-up complete.');
-    } catch (e) {
-      _logger.e('❌ Model warm-up failed', error: e);
-      // Don't rethrow, warm-up is not critical
-    }
+    // Note: Warm-up is disabled until initialization is fully stable
+    // to avoid masking initialization errors.
+    // You can re-enable this after confirming the model works.
+    _logger.i('Model warm-up skipped for now.');
   }
 
   /// Detect emotions from image bytes
   Future<EmotionResult> detectEmotions(Uint8List imageBytes) async {
     if (!_isInitialized || _session == null) {
+      _logger.e('OnnxEmotionService not initialized. Call initialize() first.');
       throw Exception(
           'OnnxEmotionService not initialized. Call initialize() first.');
     }
 
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = Stopwatch()..stop();
+    stopwatch.start();
 
     try {
       // Preprocess image
@@ -205,7 +198,8 @@ class OnnxEmotionService {
         timestamp: DateTime.now(),
         processingTimeMs: stopwatch.elapsedMilliseconds,
       );
-
+      
+      _logger.i('Emotion detected: ${result.emotion} (${(result.confidence * 100).toStringAsFixed(1)}%)');
       return result;
     } catch (e, stackTrace) {
       _logger.e('❌ Emotion detection failed', error: e, stackTrace: stackTrace);
@@ -273,7 +267,8 @@ class OnnxEmotionService {
 
     try {
       // Create the input tensor
-      inputOrt = OrtValue.createTensor(input, _inputShape);
+      // THIS IS THE FIX: Use OrtValueTensor.createTensorWithDataList
+      inputOrt = OrtValueTensor.createTensorWithDataList(input, _inputShape);
 
       // Get input and output names from the model
       final inputNames = _session!.inputNames;
@@ -287,25 +282,38 @@ class OnnxEmotionService {
       // Create run options
       runOptions = OrtRunOptions();
 
-      // Run the model
-      outputs = _session!.run(runOptions, inputs);
+      // Run the model asynchronously
+      // THIS IS THE SECOND FIX: Use runAsync
+      outputs = await _session!.runAsync(runOptions, inputs);
 
-      if (outputs.isEmpty || outputs.first == null) {
+      if (outputs == null || outputs.isEmpty || outputs.first == null) {
         throw Exception('Model execution returned no outputs');
       }
 
-      // Get the output data (should be a List<List<double>>)
-      final outputData = outputs.first!.value as List<List<dynamic>>;
-      
-      // Flatten and convert to List<double>
-      final probabilities = outputData.first.map((e) => e as double).toList();
+      // Get the output data
+      final outputValue = outputs.first!.value;
 
-      if (probabilities.length != _emotionClasses.length) {
-         _logger.e('Output mismatch: Model output ${probabilities.length} classes, but labels file has ${_emotionClasses.length}');
-         throw Exception('Model output size mismatch');
+      // Ensure the output is in the expected format [1, 8]
+      if (outputValue is List<List<dynamic>>) {
+        final outputData = outputValue;
+        
+        if (outputData.isEmpty || outputData.first.isEmpty) {
+          throw Exception('Model output list is empty');
+        }
+
+        // Flatten and convert to List<double>
+        final probabilities = outputData.first.map((e) => e as double).toList();
+
+        if (probabilities.length != _emotionClasses.length) {
+          _logger.e('Output mismatch: Model output ${probabilities.length} classes, but labels file has ${_emotionClasses.length}');
+          throw Exception('Model output size mismatch');
+        }
+        return probabilities;
+      } else {
+        _logger.e('Unexpected output type: ${outputValue.runtimeType}');
+        _logger.e('Output value: $outputValue');
+        throw Exception('Unexpected model output type');
       }
-
-      return probabilities;
     } catch (e) {
       _logger.e('❌ ONNX inference failed', error: e);
       rethrow;
@@ -368,7 +376,7 @@ class OnnxEmotionService {
     try {
       _session?.release();
       // Note: OrtEnv is a singleton and releasing it might affect other services
-      // _env?.release(); // Uncomment if you are sure this is the only user
+      // _env?.release();
       _session = null;
       _isInitialized = false;
       _inferenceTimes.clear();
@@ -376,56 +384,6 @@ class OnnxEmotionService {
     } catch (e) {
       _logger.e('❌ Error during disposal', error: e);
     }
-  }
-
-  // --- Methods below are for real-time/batch processing ---
-
-  /// Enhanced real-time detection with frame stabilization
-  Future<EmotionResult> detectEmotionsRealTime(
-    Uint8List imageBytes, {
-    EmotionResult? previousResult,
-    double stabilizationFactor = 0.3,
-  }) async {
-    final currentResult = await detectEmotions(imageBytes);
-
-    if (previousResult != null && stabilizationFactor > 0) {
-      // Apply temporal stabilization to reduce flickering
-      final stabilizedEmotions = <String, double>{};
-      for (final emotion in _emotionClasses) {
-        final currentValue = currentResult.allEmotions[emotion] ?? 0.0;
-        final previousValue = previousResult.allEmotions[emotion] ?? 0.0;
-        final stabilizedValue = currentValue * (1 - stabilizationFactor) +
-            previousValue * stabilizationFactor;
-        stabilizedEmotions[emotion] = stabilizedValue;
-      }
-      final maxEntry = stabilizedEmotions.entries
-          .reduce((a, b) => a.value > b.value ? a : b);
-      return EmotionResult(
-        emotion: maxEntry.key,
-        confidence: maxEntry.value,
-        allEmotions: stabilizedEmotions,
-        timestamp: DateTime.now(),
-        processingTimeMs: currentResult.processingTimeMs,
-      );
-    }
-    return currentResult;
-  }
-
-  /// Batch processing for multiple images
-  Future<List<EmotionResult>> detectEmotionsBatch(
-      List<Uint8List> imageBytesList) async {
-    if (!_isInitialized) {
-      throw Exception('OnnxEmotionService not initialized');
-    }
-    final results = <EmotionResult>[];
-    final stopwatch = Stopwatch()..start();
-    _logger.d('🎯 Starting batch detection for ${imageBytesList.length} images...');
-    for (int i = 0; i < imageBytesList.length; i++) {
-      final result = await detectEmotions(imageBytesList[i]);
-      results.add(result);
-    }
-    _logger.d('🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms');
-    return results;
   }
 }
 
@@ -458,3 +416,7 @@ class PerformanceStats {
         'total: $totalInferences)';
   }
 }
+
+// Ensure the EmotionResult class is imported or defined
+// I'm assuming it's in the import:
+// import '../../../data/models/emotion_result.dart';
