@@ -17,7 +17,6 @@ import '../features/mood_detection/presentation/providers/mood_detection_provide
 import '../features/mood_detection/presentation/providers/image_detection_provider.dart';
 import '../features/mood_detection/presentation/providers/audio_detection_provider.dart';
 import '../features/mood_detection/presentation/providers/combined_detection_provider.dart';
-import '../features/mood_detection/onnx_emotion_detection/presentation/pages/onnx_emotion_detection_page.dart';
 import 'route_guard.dart';
 
 // Services
@@ -140,10 +139,7 @@ class MentalWellnessApp extends StatelessWidget {
                 requiredFeature: 'chat',
                 child: const ChatPage(),
               ),
-          '/onnx-emotion': (context) => RouteGuard(
-                requiredFeature: 'mood_tracking',
-                child: const OnnxEmotionDetectionPage(),
-              ),
+          
         },
       ),
     );
