@@ -1,18 +1,18 @@
 // File: lib/features/mood_detection/presentation/pages/mood_results_page.dart
-// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-7d106854c363e04880dc09100a29f774898d294f/lib/features/mood_detection/presentation/pages/mood_results_page.dart
+// *** THIS IS THE CORRECT FILE TO MODIFY ***
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// Remove or comment out share_plus if no longer needed anywhere
+// Removed SharePlus import as the button is replaced
 // import 'package:share_plus/share_plus.dart';
-import '../../data/models/emotion_result.dart'; //
-import '../providers/image_detection_provider.dart'; //
-import '../../../../core/utils/emotion_utils.dart'; //
+import '../../data/models/emotion_result.dart';
+import '../providers/image_detection_provider.dart';
+import '../../../../core/utils/emotion_utils.dart'; // For color/icon mapping
 
 class MoodResultsPage extends StatelessWidget {
-  final EmotionResult emotionResult; //
-  final String? imagePath; //
+  final EmotionResult emotionResult;
+  final String? imagePath; // Optional: To display the analyzed image
 
   const MoodResultsPage({
     super.key,
@@ -26,50 +26,47 @@ class MoodResultsPage extends StatelessWidget {
     // Access the provider but don't listen here if changes are handled by Consumers below
     final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
 
-    // --- NEW: Ensure provider's current result matches this page's result ---
-    // This is important if the user navigates here directly after detection
+    // IMPORTANT: Ensure the provider's state reflects THIS result
+    // Ideally, call this right after navigating to this page if needed
+    // Example (if you add such a method to the provider):
     // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   if (provider.currentResult != emotionResult) {
-    //      // You might need a method in the provider like:
-    //      // provider.setStaticResultForAdvice(emotionResult);
-    //      // Or ensure fetchAdvice can take the mood directly.
-    //      // For now, we assume the user flow sets the provider's currentResult correctly before navigating here.
-    //      print("Warning: Provider's currentResult might differ from MoodResultsPage emotionResult.");
-    //   }
+    //    provider.setCurrentResultForAdvice(emotionResult);
     // });
-    // --- END NEW ---
+
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mood Analysis Result'), //
-        backgroundColor: EmotionUtils.getEmotionColor(emotionResult.emotion).withOpacity(0.8), //
+        title: const Text('Mood Analysis Result'),
+        backgroundColor: EmotionUtils.getEmotionColor(emotionResult.emotion).withOpacity(0.8),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0), //
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (imagePath != null) //
+            if (imagePath != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 20.0),
                 child: ClipRRect(
                    borderRadius: BorderRadius.circular(15.0),
                    child: Image.file(
                       File(imagePath!),
-                      height: 250,
+                      height: 250, // Adjust height as needed
                       fit: BoxFit.cover,
                    ),
                 ),
               ),
 
+             // --- Main Result Card ---
              _buildResultCard(context, provider), // Pass provider
+             // --- End Result Card ---
 
             const SizedBox(height: 20),
 
              ElevatedButton.icon(
               icon: const Icon(Icons.arrow_back),
               label: const Text('Analyze Another'),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context), // Go back
               style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
               ),
@@ -80,6 +77,7 @@ class MoodResultsPage extends StatelessWidget {
     );
   }
 
+  // --- Builds the main card displaying emotion, confidence, timings, and action buttons ---
   Widget _buildResultCard(BuildContext context, ImageDetectionProvider provider) {
      return Container(
        width: double.infinity,
@@ -99,12 +97,12 @@ class MoodResultsPage extends StatelessWidget {
        child: Column(
          mainAxisSize: MainAxisSize.min,
          children: [
-           // Emotion Display
+           // --- Emotion Display ---
            Row(
              mainAxisAlignment: MainAxisAlignment.center,
              children: [
-               Icon(
-                 EmotionUtils.getEmotionIcon(emotionResult.emotion), // Use getEmotionIcon
+               Icon( // Using Icon based on EmotionUtils
+                 EmotionUtils.getEmotionIcon(emotionResult.emotion),
                  size: 48,
                  color: EmotionUtils.getEmotionColor(emotionResult.emotion),
                ),
@@ -113,22 +111,22 @@ class MoodResultsPage extends StatelessWidget {
                  crossAxisAlignment: CrossAxisAlignment.start,
                  children: [
                    Text(
-                     emotionResult.emotion.toUpperCase(), //
+                     emotionResult.emotion.toUpperCase(),
                      style: TextStyle(
                        fontSize: 30,
                        fontWeight: FontWeight.bold,
-                       color: EmotionUtils.getEmotionColor(emotionResult.emotion), //
+                       color: EmotionUtils.getEmotionColor(emotionResult.emotion),
                      ),
                    ),
                    Row(
                      children: [
-                       Icon(Icons.check_circle_outline, color: EmotionUtils.getEmotionColor(emotionResult.emotion), size: 18), //
+                       Icon(Icons.check_circle_outline, color: EmotionUtils.getEmotionColor(emotionResult.emotion), size: 18),
                        const SizedBox(width: 5),
                        Text(
-                         '${(emotionResult.confidence * 100).toStringAsFixed(0)}% Confidence', //
+                         '${(emotionResult.confidence * 100).toStringAsFixed(0)}% Confidence',
                          style: TextStyle(
                            fontSize: 16,
-                           color: EmotionUtils.getEmotionColor(emotionResult.emotion), //
+                           color: EmotionUtils.getEmotionColor(emotionResult.emotion),
                            fontWeight: FontWeight.w600,
                          ),
                        ),
@@ -140,134 +138,117 @@ class MoodResultsPage extends StatelessWidget {
            ),
            const SizedBox(height: 20),
 
-           // Timings
+           // --- Timings ---
            Row(
              mainAxisAlignment: MainAxisAlignment.center,
              children: [
-               Icon(Icons.timer, color: Colors.grey[600], size: 18), //
+               Icon(Icons.timer, color: Colors.grey[600], size: 18),
                const SizedBox(width: 5),
-               Text( //
+               Text(
                  '${emotionResult.processingTimeMs}ms',
-                 style: TextStyle(fontSize: 14, color: Colors.grey[600]), //
+                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                ),
                const SizedBox(width: 15),
-               Icon(Icons.memory, color: Colors.grey[600], size: 18), //
+               Icon(Icons.memory, color: Colors.grey[600], size: 18),
                const SizedBox(width: 5),
-               Text( //
-                 'EfficientNet-B0',
-                 style: TextStyle(fontSize: 14, color: Colors.grey[600]), //
+               Text(
+                 'EfficientNet-B0', // Model Name
+                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                ),
              ],
            ),
            const SizedBox(height: 30),
 
-           // Action Buttons
+           // --- Action Buttons Row ---
+           // This is the section that needed modification
            Row(
              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
              children: [
-               // Details Button
+               // --- Details Button ---
                Expanded(
                  child: ElevatedButton.icon(
-                   onPressed: () { //
+                   onPressed: () {
                      _showDetailsDialog(context, emotionResult);
-                     print('Details button pressed'); //
                    },
-                   icon: const Icon(Icons.description, size: 20), //
-                   label: const Text('Details'), //
-                   style: ElevatedButton.styleFrom( //
+                   icon: const Icon(Icons.description, size: 20),
+                   label: const Text('Details'),
+                   style: ElevatedButton.styleFrom(
                      backgroundColor: Colors.blue.shade50,
                      foregroundColor: Colors.blue.shade700,
                      padding: const EdgeInsets.symmetric(vertical: 12),
-                     shape: RoundedRectangleBorder(
-                       borderRadius: BorderRadius.circular(10),
-                     ),
+                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                      elevation: 0,
                    ),
                  ),
                ),
                const SizedBox(width: 15),
 
-               // Save Button
+               // --- Save Button ---
                Expanded(
                  child: ElevatedButton.icon(
-                   onPressed: () { //
-                     print('Save button pressed'); //
+                   onPressed: () {
                      ScaffoldMessenger.of(context).showSnackBar(
-                       const SnackBar(content: Text('Save functionality not yet implemented.')),
+                       const SnackBar(content: Text('Save functionality not implemented yet.')),
                      );
                    },
-                   icon: const Icon(Icons.save_alt, size: 20), //
-                   label: const Text('Save'), //
-                   style: ElevatedButton.styleFrom( //
+                   icon: const Icon(Icons.save_alt, size: 20),
+                   label: const Text('Save'),
+                   style: ElevatedButton.styleFrom(
                      backgroundColor: Colors.green.shade50,
                      foregroundColor: Colors.green.shade700,
                      padding: const EdgeInsets.symmetric(vertical: 12),
-                     shape: RoundedRectangleBorder(
-                       borderRadius: BorderRadius.circular(10),
-                     ),
+                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                      elevation: 0,
                    ),
                  ),
                ),
                const SizedBox(width: 15),
 
-               // --- ADVISER BUTTON (Replaces Share Button) ---
+               // --- ADVISER BUTTON (Replaces Share) ---
                Expanded(
-                 // Use Consumer to react to fetching state for this button only
-                 child: Consumer<ImageDetectionProvider>(
-                    builder: (context, consumerProvider, child) { // Renamed to avoid conflict
-                      return ElevatedButton.icon(
-                        // Disable button while advice is being fetched
-                        onPressed: consumerProvider.isFetchingAdvice
-                            ? null
-                            : () {
-                                // Explicitly tell provider to use *this* result's mood
-                                // Assuming fetchAdvice uses provider's internal _currentResult,
-                                // we should ensure it's set correctly or modify fetchAdvice.
-                                // Simplest is to hope the provider's currentResult is correct,
-                                // or add a method like:
-                                // consumerProvider.fetchAdviceForMood(emotionResult.emotion);
-
-                                // Using existing fetchAdvice for now:
-                                consumerProvider.fetchAdvice();
-
-                                // Show the advice dialog
-                                _showAdviceDialog(context, consumerProvider);
-                              },
-                        // Show progress indicator or icon based on fetching state
-                        icon: consumerProvider.isFetchingAdvice
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
-                              )
-                            : const Icon(Icons.lightbulb_outline, size: 20), // Adviser icon
-                        label: const Text('Adviser'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange.shade50,
-                          foregroundColor: Colors.orange.shade700,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          elevation: 0,
-                          // Dim the button slightly if disabled
-                          disabledBackgroundColor: Colors.orange.shade50.withOpacity(0.5),
-                        ),
-                      );
-                    }
-                  ),
+                 child: Consumer<ImageDetectionProvider>( // Use Consumer here
+                   builder: (context, consumerProvider, child) {
+                     return ElevatedButton.icon(
+                       onPressed: consumerProvider.isFetchingAdvice
+                           ? null // Disable while fetching
+                           : () {
+                               // Ensure the provider uses this specific result's mood
+                               // A better approach might be:
+                               // consumerProvider.fetchAdviceForMood(emotionResult.emotion);
+                               // But using the existing method for now:
+                               consumerProvider.fetchAdvice();
+                               _showAdviceDialog(context, consumerProvider);
+                             },
+                       icon: consumerProvider.isFetchingAdvice
+                           ? const SizedBox(
+                               width: 20, height: 20,
+                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                             )
+                           : const Icon(Icons.lightbulb_outline, size: 20), // Adviser icon
+                       label: const Text('Adviser'),
+                       style: ElevatedButton.styleFrom(
+                         backgroundColor: Colors.orange.shade50,
+                         foregroundColor: Colors.orange.shade700,
+                         padding: const EdgeInsets.symmetric(vertical: 12),
+                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                         elevation: 0,
+                         disabledBackgroundColor: Colors.orange.shade50.withOpacity(0.5),
+                       ),
+                     );
+                   }
+                 ),
                ),
                // --- END ADVISER BUTTON ---
              ],
            ),
+           // --- End Action Buttons Row ---
          ],
        ),
      );
   }
 
+  // --- Shows the breakdown of all emotion probabilities ---
   void _showDetailsDialog(BuildContext context, EmotionResult result) {
-    // Sort emotions by confidence (highest first) using original probabilities
     final sortedEmotions = result.allEmotions.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -283,89 +264,77 @@ class MoodResultsPage extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        entry.key,
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                        overflow: TextOverflow.ellipsis,
-                      )
-                    ),
+                    SizedBox(width: 80, child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
                     Expanded(
                       child: LinearProgressIndicator(
-                        value: entry.value, // Use the original probability from allEmotions
+                        value: entry.value, // Original probability
                         backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          EmotionUtils.getEmotionColor(entry.key),
-                        ),
-                         minHeight: 6,
+                        valueColor: AlwaysStoppedAnimation<Color>(EmotionUtils.getEmotionColor(entry.key)),
+                        minHeight: 6,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    SizedBox(
-                      width: 45,
-                      child: Text(
-                        '${(entry.value * 100).toStringAsFixed(1)}%', // Display original probability
-                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                         textAlign: TextAlign.right,
-                      )
-                    ),
+                    SizedBox(width: 45, child: Text('${(entry.value * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: Colors.grey.shade600), textAlign: TextAlign.right)),
                   ],
                 ),
               );
             }).toList(),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+        actions: [ TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')) ],
       ),
     );
   }
 
-
+  // --- Shows the Gemini advice, language selector, and TTS controls ---
   void _showAdviceDialog(BuildContext context, ImageDetectionProvider provider) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          // Use the emotionResult passed to this page for the title
-          title: Text('${emotionResult.emotion} Adviser'),
-          content: Consumer<ImageDetectionProvider>(
+          title: Consumer<ImageDetectionProvider>(
+             builder: (_, p, __) => Text('${emotionResult.emotion} Adviser') // Use emotionResult from page
+          ),
+          content: Consumer<ImageDetectionProvider>( // Consumer for advice text and TTS state
             builder: (ctx, p, child) {
               return SingleChildScrollView(
                 child: ConstrainedBox(
-                   constraints: const BoxConstraints(minHeight: 100),
+                   constraints: const BoxConstraints(minHeight: 100), // Min height for loading state
                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (p.isFetchingAdvice)
                           const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator()))
-                        else if (p.adviceText != null && p.adviceText!.isNotEmpty)
+                        else if (p.adviceText != null && p.adviceText!.isNotEmpty && !p.adviceText!.startsWith("Error")) // Check for actual advice
                            Padding(
                              padding: const EdgeInsets.symmetric(vertical: 8.0),
                              child: Text(p.adviceText!, textAlign: TextAlign.center),
                            )
-                        else if (p.error != null && p.adviceText != null) // Show error specifically if advice fetching failed
-                            Text("Error getting advice: ${p.adviceText}", style: const TextStyle(color: Colors.red))
-                        else
-                          const Text('Tap the Adviser button again to get advice.'),
+                        else if (p.adviceText != null && p.adviceText!.startsWith("Error")) // Show specific error message
+                           Padding(
+                             padding: const EdgeInsets.symmetric(vertical: 8.0),
+                             child: Text(p.adviceText!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center)
+                           )
+                        else // Initial or failed state without specific error
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text('Could not fetch advice. Please try again.', textAlign: TextAlign.center),
+                          ),
                         const SizedBox(height: 20),
-                        _buildLanguageSelector(p),
+                        _buildLanguageSelector(p), // Language selector
                       ],
                    ),
                 ),
               );
             },
           ),
-          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actionsAlignment: MainAxisAlignment.spaceBetween, // Align buttons nicely
           actions: <Widget>[
+            // --- Read Aloud / Stop Button ---
             Consumer<ImageDetectionProvider>(
               builder: (ctx, p, child) {
-                bool canSpeak = p.adviceText != null && p.adviceText!.isNotEmpty && !p.isFetchingAdvice && !p.adviceText!.startsWith("Error");
+                // Enable only if there's valid advice text and not fetching
+                bool canSpeak = p.adviceText != null && p.adviceText!.isNotEmpty && !p.adviceText!.startsWith("Error") && !p.isFetchingAdvice;
                 return IconButton(
                   icon: Icon(
                     p.isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
@@ -375,14 +344,15 @@ class MoodResultsPage extends StatelessWidget {
                   tooltip: p.isSpeaking ? 'Stop' : 'Read Aloud',
                   onPressed: canSpeak
                       ? (p.isSpeaking ? p.stopSpeaking : p.speakAdvice)
-                      : null,
+                      : null, // Disable if cannot speak
                 );
               },
             ),
+            // --- Close Button ---
             TextButton(
               child: const Text('Close'),
               onPressed: () {
-                provider.stopSpeaking();
+                provider.stopSpeaking(); // Stop TTS before closing
                 Navigator.of(dialogContext).pop();
               },
             ),
@@ -390,34 +360,33 @@ class MoodResultsPage extends StatelessWidget {
         );
       },
     ).then((_) {
+       // Ensure TTS stops if dialog is dismissed by other means (e.g., back button)
        provider.stopSpeaking();
-       // Optionally clear advice text when dialog closes?
-       // provider.clearAdvice();
     });
   }
 
+  // --- Builds the language dropdown ---
   Widget _buildLanguageSelector(ImageDetectionProvider provider) {
     return DropdownButton<String>(
       value: provider.selectedLanguage,
       icon: const Icon(Icons.language, color: Colors.deepPurple, size: 20),
       dropdownColor: Colors.deepPurple.shade50,
-      underline: Container(),
-      isExpanded: true,
+      underline: Container(), // Removes underline
+      isExpanded: true, // Makes dropdown take available width
       onChanged: provider.isFetchingAdvice || provider.isSpeaking
-          ? null
+          ? null // Disable during fetching/speaking
           : (String? newValue) {
               if (newValue != null && newValue != provider.selectedLanguage) {
                 provider.setLanguage(newValue);
-                // Refetch advice for the new language
-                // Ensure provider uses the correct mood
-                 provider.fetchAdvice(); // Assumes fetchAdvice uses provider's current mood state
+                // Automatically refetch advice when language changes
+                 provider.fetchAdvice(); // Assumes fetchAdvice uses the new language state
               }
             },
       items: provider.availableLanguages
           .map<DropdownMenuItem<String>>((String value) {
         return DropdownMenuItem<String>(
           value: value,
-          child: Center(
+          child: Center( // Center text within dropdown
             child: Text(
                 value,
                 style: const TextStyle(color: Colors.deepPurple, fontSize: 14),
@@ -427,4 +396,4 @@ class MoodResultsPage extends StatelessWidget {
       }).toList(),
     );
   }
-}
+} // End of MoodResultsPage
