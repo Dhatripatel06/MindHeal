@@ -920,7 +920,7 @@ class _CombinedMoodDetectionPageState extends State<CombinedMoodDetectionPage>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MoodResultsPage(result: result),
+        builder: (context) => MoodResultsPage(emotionResult: result),
       ),
     );
   }

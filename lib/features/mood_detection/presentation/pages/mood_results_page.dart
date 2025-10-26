@@ -1,578 +1,63 @@
+// File: lib/features/mood_detection/presentation/pages/mood_results_page.dart
+// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-7d106854c363e04880dc09100a29f774898d294f/lib/features/mood_detection/presentation/pages/mood_results_page.dart
+
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../../data/models/emotion_result.dart';
-import '../widgets/results_chart_widget.dart';
+import 'package:provider/provider.dart';
+// import 'package:share_plus/share_plus.dart'; // Can be removed if share is fully replaced
+import '../../data/models/emotion_result.dart'; //
+import '../providers/image_detection_provider.dart'; //
+import '../../../../core/utils/emotion_utils.dart'; // For color/icon mapping //
 
-class MoodResultsPage extends StatefulWidget {
-  final EmotionResult result;
+class MoodResultsPage extends StatelessWidget {
+  final EmotionResult emotionResult; //
+  final String? imagePath; // Optional: To display the analyzed image //
 
-  const MoodResultsPage({Key? key, required this.result}) : super(key: key);
+  const MoodResultsPage({
+    super.key,
+    required this.emotionResult,
+    this.imagePath,
+  });
 
-  @override
-  State<MoodResultsPage> createState() => _MoodResultsPageState();
-}
-
-class _MoodResultsPageState extends State<MoodResultsPage>
-    with TickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    _animationController.forward();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
+    // Access the provider
+    final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          'Analysis Results',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: _getAnalysisTypeColor('tflite'), // Default to TFLite for new model
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareResults,
-          ),
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: _exportResults,
-          ),
-        ],
+        title: const Text('Mood Analysis Result'), //
+        backgroundColor: EmotionUtils.getEmotionColor(emotionResult.emotion).withOpacity(0.8), //
       ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Card
-              _buildHeaderCard(),
-              const SizedBox(height: 16),
-              
-              // Emotion Breakdown Chart
-              _buildEmotionChart(),
-              const SizedBox(height: 16),
-              
-              // Detailed Metrics
-              _buildDetailedMetrics(),
-              const SizedBox(height: 16),
-              
-              // Analysis Info
-              _buildAnalysisInfo(),
-              const SizedBox(height: 16),
-              
-              // Recommendations
-              _buildRecommendations(),
-              const SizedBox(height: 24),
-              
-              // Action Buttons
-              _buildActionButtons(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _getEmotionColor(widget.result.emotion),
-            _getEmotionColor(widget.result.emotion).withOpacity(0.7),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: _getEmotionColor(widget.result.emotion).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(
-            _getEmotionIcon(widget.result.emotion),
-            size: 64,
-            color: Colors.white,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.result.emotion.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${(widget.result.confidence * 100).toInt()}% Confidence',
-            style: const TextStyle(
-              fontSize: 18,
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'TensorFlow Lite Model', // Updated to reflect new analysis method
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmotionChart() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Emotion Distribution',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 200,
-            child: ResultsChartWidget(
-              emotionData: widget.result.allEmotions,
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Emotion Legend
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: widget.result.allEmotions.entries
-                .map((entry) => _buildEmotionLegendItem(entry.key, entry.value))
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmotionLegendItem(String emotion, double value) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: _getEmotionColor(emotion),
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '$emotion: ${(value * 100).toInt()}%',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[700],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailedMetrics() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Detailed Metrics',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Metrics Grid
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 2.5,
-            children: [
-              _buildMetricCard(
-                'Primary Emotion',
-                widget.result.emotion,
-                Icons.psychology,
-                _getEmotionColor(widget.result.emotion),
-              ),
-              _buildMetricCard(
-                'Confidence Score',
-                '${(widget.result.confidence * 100).toInt()}%',
-                Icons.trending_up,
-                Colors.blue,
-              ),
-              _buildMetricCard(
-                'Analysis Type',
-                'TensorFlow Lite', // Updated for new model
-                Icons.analytics,
-                Colors.purple,
-              ),
-              _buildMetricCard(
-                'Timestamp',
-                _formatTime(widget.result.timestamp),
-                Icons.access_time,
-                Colors.orange,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnalysisInfo() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Analysis Information',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          _buildInfoRow('Analysis Method', 'TensorFlow Lite Model'),
-          _buildInfoRow('Processing Time', '< 1 second'),
-          _buildInfoRow('Model Version', 'v2.1.0'),
-          _buildInfoRow('Accuracy', '94.2%'),
-          _buildInfoRow('Detected Emotions', '${widget.result.allEmotions.length}'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[800],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecommendations() {
-    final recommendations = _getRecommendations(widget.result.emotion);
-    
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.lightbulb_outline,
-                color: Colors.amber,
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Recommendations',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          ...recommendations.map((recommendation) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(top: 6),
-                  decoration: BoxDecoration(
-                    color: _getEmotionColor(widget.result.emotion),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    recommendation,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _saveToHistory,
-                icon: const Icon(Icons.history),
-                label: const Text('Save to History'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _scheduleReminder,
-                icon: const Icon(Icons.notification_add),
-                label: const Text('Set Reminder'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _runNewAnalysis,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Run New Analysis'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              side: BorderSide(color: _getEmotionColor(widget.result.emotion)),
-              foregroundColor: _getEmotionColor(widget.result.emotion),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _shareResults() {
-    // Implement sharing functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Results shared successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _exportResults() {
-    // Implement export functionality
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: 200,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0), //
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Export Results',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            if (imagePath != null) //
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20.0),
+                child: ClipRRect(
+                   borderRadius: BorderRadius.circular(15.0),
+                   child: Image.file(
+                      File(imagePath!),
+                      height: 250,
+                      fit: BoxFit.cover,
+                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                    title: const Text('Export as PDF'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _exportAsPDF();
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.table_chart, color: Colors.green),
-                    title: const Text('Export as CSV'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _exportAsCSV();
-                    },
-                  ),
-                ],
+
+             _buildResultCard(context, provider), // Pass provider
+
+            const SizedBox(height: 20),
+
+             ElevatedButton.icon(
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Analyze Another'),
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ],
@@ -581,148 +66,346 @@ class _MoodResultsPageState extends State<MoodResultsPage>
     );
   }
 
-  void _exportAsPDF() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('PDF export started...'),
-        backgroundColor: Colors.blue,
+  Widget _buildResultCard(BuildContext context, ImageDetectionProvider provider) {
+     return Container(
+       width: double.infinity,
+       padding: const EdgeInsets.all(20),
+       decoration: BoxDecoration(
+         color: Colors.white,
+         borderRadius: BorderRadius.circular(20),
+         boxShadow: [
+           BoxShadow(
+             color: Colors.grey.withOpacity(0.1),
+             spreadRadius: 2,
+             blurRadius: 5,
+             offset: const Offset(0, 3),
+           ),
+         ],
+       ),
+       child: Column(
+         mainAxisSize: MainAxisSize.min,
+         children: [
+           // Emotion Display
+           Row(
+             mainAxisAlignment: MainAxisAlignment.center,
+             children: [
+               // --- MODIFIED: Use Icon instead of Text ---
+               Icon(
+                 EmotionUtils.getEmotionIcon(emotionResult.emotion), // Use getEmotionIcon
+                 size: 48,
+                 color: EmotionUtils.getEmotionColor(emotionResult.emotion), // Optionally color the icon
+               ),
+               // --- END MODIFIED ---
+               const SizedBox(width: 20),
+               Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                   Text(
+                     emotionResult.emotion.toUpperCase(), //
+                     style: TextStyle(
+                       fontSize: 30,
+                       fontWeight: FontWeight.bold,
+                       color: EmotionUtils.getEmotionColor(emotionResult.emotion), //
+                     ),
+                   ),
+                   Row(
+                     children: [
+                       Icon(Icons.check_circle_outline, color: EmotionUtils.getEmotionColor(emotionResult.emotion), size: 18), //
+                       const SizedBox(width: 5),
+                       Text(
+                         '${(emotionResult.confidence * 100).toStringAsFixed(0)}% Confidence', //
+                         style: TextStyle(
+                           fontSize: 16,
+                           color: EmotionUtils.getEmotionColor(emotionResult.emotion), //
+                           fontWeight: FontWeight.w600,
+                         ),
+                       ),
+                     ],
+                   ),
+                 ],
+               ),
+             ],
+           ),
+           const SizedBox(height: 20),
+
+           // Timings
+           Row(
+             mainAxisAlignment: MainAxisAlignment.center,
+             children: [
+               Icon(Icons.timer, color: Colors.grey[600], size: 18), //
+               const SizedBox(width: 5),
+               Text( //
+                 '${emotionResult.processingTimeMs}ms',
+                 style: TextStyle(fontSize: 14, color: Colors.grey[600]), //
+               ),
+               const SizedBox(width: 15),
+               Icon(Icons.memory, color: Colors.grey[600], size: 18), //
+               const SizedBox(width: 5),
+               Text( //
+                 'EfficientNet-B0',
+                 style: TextStyle(fontSize: 14, color: Colors.grey[600]), //
+               ),
+             ],
+           ),
+           const SizedBox(height: 30),
+
+           // Action Buttons
+           Row(
+             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+             children: [
+               // Details Button
+               Expanded(
+                 child: ElevatedButton.icon(
+                   onPressed: () { //
+                     _showDetailsDialog(context, emotionResult);
+                     print('Details button pressed'); //
+                   },
+                   icon: const Icon(Icons.description, size: 20), //
+                   label: const Text('Details'), //
+                   style: ElevatedButton.styleFrom( //
+                     backgroundColor: Colors.blue.shade50,
+                     foregroundColor: Colors.blue.shade700,
+                     padding: const EdgeInsets.symmetric(vertical: 12),
+                     shape: RoundedRectangleBorder(
+                       borderRadius: BorderRadius.circular(10),
+                     ),
+                     elevation: 0,
+                   ),
+                 ),
+               ),
+               const SizedBox(width: 15),
+
+               // Save Button
+               Expanded(
+                 child: ElevatedButton.icon(
+                   onPressed: () { //
+                     print('Save button pressed'); //
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       const SnackBar(content: Text('Save functionality not yet implemented.')),
+                     );
+                   },
+                   icon: const Icon(Icons.save_alt, size: 20), //
+                   label: const Text('Save'), //
+                   style: ElevatedButton.styleFrom( //
+                     backgroundColor: Colors.green.shade50,
+                     foregroundColor: Colors.green.shade700,
+                     padding: const EdgeInsets.symmetric(vertical: 12),
+                     shape: RoundedRectangleBorder(
+                       borderRadius: BorderRadius.circular(10),
+                     ),
+                     elevation: 0,
+                   ),
+                 ),
+               ),
+               const SizedBox(width: 15),
+
+               // Adviser Button (replaces Share)
+               Expanded(
+                 child: Consumer<ImageDetectionProvider>(
+                    builder: (context, provider, child) {
+                      return ElevatedButton.icon(
+                        onPressed: provider.isFetchingAdvice
+                            ? null
+                            : () {
+                                // Ensure the provider uses the current result
+                                // Note: The provider's currentResult might be from real-time.
+                                // It's safer if the provider's fetchAdvice could accept the mood directly
+                                // For now, we assume the provider is aware or we manually set it (if provider allows)
+                                // e.g., provider.setStaticResultForAdvice(emotionResult);
+                                provider.fetchAdvice(); // Will use provider's _currentResult
+                                _showAdviceDialog(context, provider);
+                              },
+                        icon: provider.isFetchingAdvice
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                              )
+                            : const Icon(Icons.lightbulb_outline, size: 20),
+                        label: const Text('Adviser'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade50,
+                          foregroundColor: Colors.orange.shade700,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                      );
+                    }
+                  ),
+               ),
+             ],
+           ),
+         ],
+       ),
+     );
+  }
+
+  void _showDetailsDialog(BuildContext context, EmotionResult result) {
+    final sortedEmotions = result.allEmotions.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Emotion Breakdown'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: sortedEmotions.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 80,
+                      child: Text(
+                        entry.key,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    ),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: entry.value,
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          EmotionUtils.getEmotionColor(entry.key),
+                        ),
+                         minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 45,
+                      child: Text(
+                        '${(entry.value * 100).toStringAsFixed(1)}%',
+                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                         textAlign: TextAlign.right,
+                      )
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
 
-  void _exportAsCSV() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('CSV export started...'),
-        backgroundColor: Colors.green,
-      ),
+  void _showAdviceDialog(BuildContext context, ImageDetectionProvider provider) {
+     // Ensure the provider knows which mood to get advice for.
+     // If the provider's currentResult isn't guaranteed to be this page's result,
+     // you might need to adjust the provider or pass the mood explicitly.
+     // For simplicity here, we assume fetchAdvice uses the provider's current mood,
+     // hoping it matches this page's emotionResult.
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Consumer<ImageDetectionProvider>(
+             builder: (_, p, __) => Text('${emotionResult.emotion} Adviser') // Use emotionResult from page
+          ),
+          content: Consumer<ImageDetectionProvider>(
+            builder: (ctx, p, child) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                   constraints: const BoxConstraints(minHeight: 100),
+                   child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (p.isFetchingAdvice)
+                          const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator()))
+                        else if (p.adviceText != null && p.adviceText!.isNotEmpty)
+                           Padding(
+                             padding: const EdgeInsets.symmetric(vertical: 8.0),
+                             child: Text(p.adviceText!, textAlign: TextAlign.center),
+                           )
+                        else if (p.error != null)
+                            Text("Error: ${p.error}", style: const TextStyle(color: Colors.red))
+                        else
+                          const Text('Tap the Adviser button again to get advice.'),
+                        const SizedBox(height: 20),
+                        _buildLanguageSelector(p),
+                      ],
+                   ),
+                ),
+              );
+            },
+          ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actions: <Widget>[
+            Consumer<ImageDetectionProvider>(
+              builder: (ctx, p, child) {
+                bool canSpeak = p.adviceText != null && p.adviceText!.isNotEmpty && !p.isFetchingAdvice;
+                return IconButton(
+                  icon: Icon(
+                    p.isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
+                    color: p.isSpeaking ? Colors.redAccent : Colors.deepPurple,
+                  ),
+                  iconSize: 30,
+                  tooltip: p.isSpeaking ? 'Stop' : 'Read Aloud',
+                  onPressed: canSpeak
+                      ? (p.isSpeaking ? p.stopSpeaking : p.speakAdvice)
+                      : null,
+                );
+              },
+            ),
+            TextButton(
+              child: const Text('Close'),
+              onPressed: () {
+                provider.stopSpeaking();
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+       provider.stopSpeaking();
+    });
+  }
+
+  Widget _buildLanguageSelector(ImageDetectionProvider provider) {
+    return DropdownButton<String>(
+      value: provider.selectedLanguage,
+      icon: const Icon(Icons.language, color: Colors.deepPurple, size: 20),
+      dropdownColor: Colors.deepPurple.shade50,
+      underline: Container(),
+      isExpanded: true,
+      onChanged: provider.isFetchingAdvice || provider.isSpeaking
+          ? null
+          : (String? newValue) {
+              if (newValue != null && newValue != provider.selectedLanguage) {
+                provider.setLanguage(newValue);
+                // Refetch advice for the new language
+                 // Ensure provider uses the correct mood for this page
+                // e.g. provider.fetchAdviceForMood(emotionResult.emotion);
+                 provider.fetchAdvice(); // Assuming fetchAdvice uses current provider state appropriately
+              }
+            },
+      items: provider.availableLanguages
+          .map<DropdownMenuItem<String>>((String value) {
+        return DropdownMenuItem<String>(
+          value: value,
+          child: Center(
+            child: Text(
+                value,
+                style: const TextStyle(color: Colors.deepPurple, fontSize: 14),
+            ),
+          ),
+        );
+      }).toList(),
     );
-  }
-
-  void _saveToHistory() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Results saved to history!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _scheduleReminder() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Reminder scheduled successfully!'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
-
-  void _runNewAnalysis() {
-    Navigator.pop(context);
-  }
-
-  List<String> _getRecommendations(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'happy':
-        return [
-          'Continue engaging in activities that bring you joy',
-          'Share your positive energy with others',
-          'Consider journaling about what made you happy today',
-        ];
-      case 'sad':
-        return [
-          'Practice self-compassion and allow yourself to feel',
-          'Consider reaching out to a friend or loved one',
-          'Engage in gentle activities like walking or listening to music',
-        ];
-      case 'angry':
-        return [
-          'Take deep breaths and practice calming techniques',
-          'Consider physical exercise to release tension',
-          'Reflect on the source of anger when you feel ready',
-        ];
-      case 'fear':
-        return [
-          'Practice grounding techniques to feel more centered',
-          'Break down your concerns into manageable steps',
-          'Consider seeking support if fear persists',
-        ];
-      default:
-        return [
-          'Take time for self-reflection',
-          'Engage in activities that support your well-being',
-          'Consider tracking your mood over time',
-        ];
-    }
-  }
-
-  Color _getAnalysisTypeColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'image':
-        return Colors.blue;
-      case 'audio':
-        return Colors.teal;
-      case 'combined':
-        return Colors.purple;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Color _getEmotionColor(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'happy':
-        return Colors.green;
-      case 'sad':
-        return Colors.blue;
-      case 'angry':
-        return Colors.red;
-      case 'fear':
-        return Colors.orange;
-      case 'surprise':
-        return Colors.purple;
-      case 'disgust':
-        return Colors.brown;
-      case 'neutral':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getEmotionIcon(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'happy':
-        return Icons.sentiment_very_satisfied;
-      case 'sad':
-        return Icons.sentiment_very_dissatisfied;
-      case 'angry':
-        return Icons.sentiment_dissatisfied;
-      case 'fear':
-        return Icons.sentiment_neutral;
-      case 'surprise':
-        return Icons.sentiment_satisfied;
-      case 'disgust':
-        return Icons.sentiment_dissatisfied;
-      case 'neutral':
-        return Icons.sentiment_neutral;
-      default:
-        return Icons.sentiment_neutral;
-    }
-  }
-
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final difference = now.difference(time);
-    
-    if (difference.inMinutes < 1) {
-      return 'Just now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else {
-      return '${difference.inDays}d ago';
-    }
   }
 }
