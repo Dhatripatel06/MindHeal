@@ -14,7 +14,7 @@ class GeminiService {
     } else {
       try {
         _model = GenerativeModel(
-          model: 'gemini-1.5-flash-latest', // Or another suitable model
+          model: 'gemini-pro', // Or another suitable model
           apiKey: _apiKey,
         );
       } catch (e) {
