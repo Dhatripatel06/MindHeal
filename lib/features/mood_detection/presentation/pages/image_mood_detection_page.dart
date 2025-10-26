@@ -1,16 +1,16 @@
 // File: lib/features/mood_detection/presentation/pages/image_mood_detection_page.dart
-// *** CORRECTED FILE WITH ADVISER BUTTON & ERROR FIX ***
+// *** CORRECTED FILE WITH ADVISER CHIP & LOADING INDICATOR FIX ***
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import '../providers/image_detection_provider.dart'; //
+import '../providers/image_detection_provider.dart';
 // Removed MoodResultsPage import
 // import 'mood_results_page.dart';
-import '../../../../shared/widgets/loading_indicator.dart'; //
-import '../../data/models/emotion_result.dart'; //
-import '../../../../core/utils/emotion_utils.dart'; //
+import '../../../../shared/widgets/loading_indicator.dart';
+import '../../data/models/emotion_result.dart';
+import '../../../../core/utils/emotion_utils.dart';
 // Import SharePlus if you still want the share logic available (even if button removed)
 import 'package:share_plus/share_plus.dart';
 
@@ -88,7 +88,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     }
 
     // Reset advice state in provider before processing new image
-    provider.resetAdviceStateOnly(); // Ensure this method exists
+    provider.resetAdviceStateOnly(); // Ensure this method exists in provider
 
     setState(() {
        _isProcessing = true; //
@@ -97,13 +97,16 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     });
 
     try {
+      // Use the provider's processImage method which also updates its internal _currentResult
       final result = await provider.processImage(imageFile); //
 
       setState(() {
-        _currentEmotionResult = result;
+        _currentEmotionResult = result; // Store result to display locally
          _isProcessing = false; //
       });
-      _resultCardAnimationController.forward();
+      if (!result.hasError) { // Only animate if successful
+         _resultCardAnimationController.forward();
+      }
 
       // --- NO NAVIGATION HERE ---
 
@@ -111,7 +114,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
       final errorMessage = 'Error processing image: $e';
       setState(() {
          _isProcessing = false; //
-         _currentEmotionResult = EmotionResult.error(errorMessage); // Show error in result area
+         // Store error result to display in the result area
+         _currentEmotionResult = EmotionResult.error(errorMessage); //
       });
        _showErrorSnackbar(errorMessage);
     }
@@ -129,7 +133,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     );
   }
 
-  // Share function - kept for reference
+  // Share function - kept for reference if needed elsewhere
   Future<void> _shareResult(EmotionResult result) async { //
     if (_selectedImage == null) return;
     try {
@@ -166,19 +170,20 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: _isProcessing
-                      ? const LoadingIndicator() // FIX: Removed 'text' parameter
+                      // ***** FIX: Removed 'text' parameter *****
+                      ? const LoadingIndicator() // Use without 'text'
                       : _selectedImage != null
-                          ? ClipRRect(
+                          ? ClipRRect( //
                               borderRadius: BorderRadius.circular(15.0),
-                              child: Image.file(
+                              child: Image.file( //
                                 _selectedImage!,
                                 fit: BoxFit.contain, // Use contain to see whole image
                               ),
                             )
                           : Column( // Placeholder when no image selected
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center, //
                               children: [
-                                Icon(Icons.image_search_outlined, size: 100, color: Colors.grey.shade400),
+                                Icon(Icons.image_search_outlined, size: 100, color: Colors.grey.shade400), //
                                 const SizedBox(height: 10),
                                 Text(
                                   'Select an image using the buttons below',
@@ -197,8 +202,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 child: SingleChildScrollView( // Allow result card to scroll if content overflows
                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                    child: _currentEmotionResult != null && !_isProcessing
-                       ? ScaleTransition(
-                          scale: _resultCardScaleAnimation,
+                       ? ScaleTransition( //
+                          scale: _resultCardScaleAnimation, //
                           child: _buildResultDisplay(context, _currentEmotionResult!), // Display result or error
                         )
                        // Show nothing or a placeholder while no result
@@ -210,17 +215,17 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
              // --- Action Buttons (Pick Image) ---
               Padding( // Keep padding for buttons
                 padding: const EdgeInsets.only(bottom: 30.0, top: 10.0, left: 16.0, right: 16.0),
-                child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Row( //
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, //
                     children: [
-                      _buildActionButton( // Use helper for consistent FAB style
+                      _buildActionButton( //
                         icon: Icons.photo_library, //
                         label: 'Gallery', //
                         color: Colors.green, //
                         // Disable buttons while processing
                         onPressed: _isProcessing ? null : () => _pickImage(ImageSource.gallery), //
                       ),
-                      _buildActionButton( // Use helper for consistent FAB style
+                      _buildActionButton( //
                         icon: Icons.camera_alt, //
                         label: 'Camera', //
                         color: Colors.blue, //
@@ -245,7 +250,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
 
     // --- FIX: Handle error state display ---
-    if (result.hasError) {
+    if (result.hasError) { //
        return Card(
           elevation: 4.0,
           margin: EdgeInsets.zero,
@@ -260,8 +265,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                     // Use the 'emotion' field which holds the error message in this case
-                     result.emotion, // FIX: Use result.emotion for error message
+                     // FIX: Use the 'emotion' field which holds the error message
+                     result.emotion, //
                      style: TextStyle(color: Colors.red.shade900, fontSize: 14),
                   ),
                 ),
@@ -291,9 +296,11 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
 
      // Find second best emotion if needed
      Map<String, dynamic>? secondBestEmotion; //
-     if (result.confidence < 0.85 && result.allEmotions.length > 1) { //
+     // Ensure allEmotions is not null and has entries before sorting
+     if (result.allEmotions.isNotEmpty && result.confidence < 0.85) { //
        final sortedEmotions = result.allEmotions.entries.toList() //
          ..sort((a, b) => b.value.compareTo(a.value));
+       // Check length before accessing index 1
        if (sortedEmotions.length > 1 && sortedEmotions[1].value > 0.1) { //
          secondBestEmotion = { //
            'emotion': sortedEmotions[1].key,
@@ -420,7 +427,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
             // === ACTION CHIPS ROW (Wrap) - UPDATED === //
             // ======================================== //
             Wrap( //
-              spacing: 10, // Horizontal spacing //
+              spacing: 10, // Horizontal spacing
               runSpacing: 8, // Vertical spacing if they wrap
               alignment: WrapAlignment.center, // Center the chips
               children: [
@@ -449,27 +456,29 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                         label: consumerProvider.isFetchingAdvice
                             ? 'Loading...' // Indicate loading
                             : 'Adviser',
-                        color: Colors.orange, //
+                        color: Colors.orange, // Keep orange color like Share
                         // Disable tap while fetching, otherwise fetch advice
                         onTap: consumerProvider.isFetchingAdvice
-                            ? (){}
-                            : () {
-                                consumerProvider.fetchAdviceForMood(result.emotion); // Use correct method
-                                _showAdviceDialog(context, consumerProvider, result.emotion); // Pass emotion for title
+                            ? (){} // Do nothing if already fetching
+                            : () { // Fetch advice on tap
+                                consumerProvider.fetchAdviceForMood(result.emotion);
+                                _showAdviceDialog(context, consumerProvider, result.emotion);
                               },
                       );
                    }
                  ),
                  // --- END ADVISER CHIP ---
 
-                 // --- Original Share Chip (COMMENTED OUT) ---
-                // _buildActionChip(
-                //   icon: Icons.share_outlined,
-                //   label: 'Share',
-                //   color: Colors.orange,
-                //   onTap: () => _shareResult(result),
-                // ),
-                // --- End Original Share Chip ---
+                 // --- Original Share Chip (REMOVED) ---
+                 /*
+                 _buildActionChip(
+                   icon: Icons.share_outlined,
+                   label: 'Share',
+                   color: Colors.orange,
+                   onTap: () => _shareResult(result),
+                 ),
+                 */
+                 // --- End Original Share Chip ---
               ],
             ),
             // --- End Action Chips Row ---
