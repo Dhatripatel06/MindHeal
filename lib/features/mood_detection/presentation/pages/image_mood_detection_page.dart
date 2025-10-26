@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/image_detection_provider.dart';
-// import 'mood_results_page.dart'; // No longer used
+// Removed MoodResultsPage import
+// import 'mood_results_page.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../data/models/emotion_result.dart';
 import '../../../../core/utils/emotion_utils.dart';

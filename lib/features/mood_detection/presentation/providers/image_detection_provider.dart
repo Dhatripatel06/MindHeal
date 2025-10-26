@@ -418,15 +418,34 @@ class ImageDetectionProvider with ChangeNotifier {
   
 
   // Add this method (or modify existing fetchAdvice to accept optional mood)
+  // --- ADD THESE TWO METHODS INSIDE ImageDetectionProvider CLASS ---
+
+  /// Resets only the advice-related state.
+ 
+
   /// Fetch advice from Gemini specifically for the given mood.
   Future<void> fetchAdviceForMood(String mood) async {
-     if (mood.isEmpty || mood == 'none') { // Basic validation
-       _adviceText = "Cannot get advice for an unknown mood.";
+     if (mood.isEmpty || mood == 'none' || mood.startsWith("Error")) { // Basic validation
+       _adviceText = "Error: Cannot get advice for an unknown or error mood.";
+       _isFetchingAdvice = false; // Ensure loading stops
        notifyListeners();
        return;
      }
+     
+     // Set the provider's currentResult *before* calling Gemini
+     // This is safe because processImage just set it.
+     _currentResult = EmotionResult(
+         emotion: mood,
+         confidence: _currentResult?.confidence ?? 0.0, // Retain old confidence if available
+         allEmotions: _currentResult?.allEmotions ?? {mood: 1.0}, // Retain old map or create new
+         timestamp: _currentResult?.timestamp ?? DateTime.now(),
+         processingTimeMs: _currentResult?.processingTimeMs ?? 0
+     );
+
+
      if (!_geminiService.isAvailable) {
-       _adviceText = "Advice service is unavailable. Check API key.";
+       _adviceText = "Error: Advice service is unavailable (Model init failed).";
+       _isFetchingAdvice = false; // Ensure loading stops
         notifyListeners();
        return;
      }
@@ -443,18 +462,21 @@ class ImageDetectionProvider with ChangeNotifier {
          language: _selectedLanguage,
        );
        _adviceText = advice;
-       if (advice != null && advice.startsWith("Sorry")) { // Check if Gemini returned an error message
-           _error = advice; // Treat Gemini errors as general errors too
+       if (advice != null && (advice.startsWith("Sorry") || advice.startsWith("Error"))) { // Check if Gemini returned an error message
+           _error = advice; // Treat known Gemini errors as general errors too
+           // Keep adviceText as the error so UI displays it
        }
      } catch(e) {
        _adviceText = "Error: $e"; // Ensure error message starts with "Error"
        _error = _adviceText;
-       print("Error fetching advice for mood $mood: $e"); // Log error
+       // _logger.e("Error fetching advice for mood $mood", error: e); // Use logger if you have one
+       print("Error fetching advice for mood $mood: $e");
      } finally {
        _isFetchingAdvice = false;
        notifyListeners(); // Update UI with advice or error
      }
   }
+  // --- END OF METHODS TO ADD ---
 
   @override
   void dispose() {

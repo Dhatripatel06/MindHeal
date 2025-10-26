@@ -7,7 +7,7 @@ class GeminiService {
   //
   // --- ⬇️ PASTE YOUR **NEW** API KEY HERE ⬇️ ---
   //
-  final String _apiKey = "AIzaSyAuJLRrxl3YoGAI6R3Yirc_8ELXw9BonXw";
+  final String _apiKey = "AIzaSyDK6KZrkqJRlFoCw4RU06pUNTm-vl69GzQ";
   //
   // --- ⬆️ PASTE YOUR **NEW** API KEY HERE ⬆️ ---
   //
@@ -22,7 +22,7 @@ class GeminiService {
 
   GeminiService() {
     if (_apiKey.startsWith("<")) {
-      _logger.e("API Key not set in gemini_service.dart. Replace <YOUR_NEW_API_KEY_HERE>.");
+      _logger.e("API Key not set in gemini_service.dart. Replace AIzaSyBvTKZkBbsYcLmLREqc0Bnxu1pn3dxPNLg");
     } else {
       try {
         _model = GenerativeModel(
