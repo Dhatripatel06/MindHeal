@@ -413,7 +413,48 @@ class ImageDetectionProvider with ChangeNotifier {
     notifyListeners();
   }
   // --- END NEW METHOD ---
+// Add this method
+  /// Resets only the advice-related state, typically called when navigating to a new result page.
+  
 
+  // Add this method (or modify existing fetchAdvice to accept optional mood)
+  /// Fetch advice from Gemini specifically for the given mood.
+  Future<void> fetchAdviceForMood(String mood) async {
+     if (mood.isEmpty || mood == 'none') { // Basic validation
+       _adviceText = "Cannot get advice for an unknown mood.";
+       notifyListeners();
+       return;
+     }
+     if (!_geminiService.isAvailable) {
+       _adviceText = "Advice service is unavailable. Check API key.";
+        notifyListeners();
+       return;
+     }
+
+     _isFetchingAdvice = true;
+     _adviceText = null; // Clear previous advice while fetching
+     _error = null; // Clear previous errors
+     await _ttsService.stop();
+     notifyListeners(); // Show loading state
+
+     try {
+       final advice = await _geminiService.getAdvice(
+         mood: mood, // Use the passed mood
+         language: _selectedLanguage,
+       );
+       _adviceText = advice;
+       if (advice != null && advice.startsWith("Sorry")) { // Check if Gemini returned an error message
+           _error = advice; // Treat Gemini errors as general errors too
+       }
+     } catch(e) {
+       _adviceText = "Error: $e"; // Ensure error message starts with "Error"
+       _error = _adviceText;
+       print("Error fetching advice for mood $mood: $e"); // Log error
+     } finally {
+       _isFetchingAdvice = false;
+       notifyListeners(); // Update UI with advice or error
+     }
+  }
 
   @override
   void dispose() {
