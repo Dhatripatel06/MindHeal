@@ -4,18 +4,25 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:logger/logger.dart';
 
 class GeminiService {
-  // --- *** MOST LIKELY CAUSE OF API ERROR: Ensure this key is VALID, NEW, and the associated project has the API ENABLED *** ---
-  final String _apiKey = "<AIzaSyB8N31cpFFUQ-qD0C1Yfxw1RzwqiuFP4x8>"; // Replace with your actual, valid key
-  // ---
+  //
+  // --- ⬇️ PASTE YOUR **NEW** API KEY HERE ⬇️ ---
+  //
+  final String _apiKey = "AIzaSyAuJLRrxl3YoGAI6R3Yirc_8ELXw9BonXw";
+  //
+  // --- ⬆️ PASTE YOUR **NEW** API KEY HERE ⬆️ ---
+  //
+  // REMINDER: You must also ENABLE "Vertex AI API" or "Generative Language API"
+  // in your Google Cloud Console project for this key.
+  //
 
   GenerativeModel? _model;
   final Logger _logger = Logger();
-  // Store the model name used for initialization
-  final String _modelName = 'gemini-pro'; // Using the standard model name
+  // Using the standard 'gemini-pro' model name
+  final String _modelName = 'gemini-pro';
 
   GeminiService() {
     if (_apiKey.startsWith("<")) {
-      _logger.e("API Key not set in gemini_service.dart. Replace <YOUR_API_KEY>.");
+      _logger.e("API Key not set in gemini_service.dart. Replace <YOUR_NEW_API_KEY_HERE>.");
     } else {
       try {
         _model = GenerativeModel(
@@ -36,6 +43,9 @@ class GeminiService {
     required String language,
   }) async {
     if (_model == null) {
+      if (_apiKey.startsWith("<")) {
+         return "Error: API Key not set. Please update gemini_service.dart.";
+      }
       _logger.w("Gemini model not initialized, cannot get advice.");
       return "Error: Advice service is currently unavailable (Model init failed).";
     }
@@ -54,8 +64,7 @@ class GeminiService {
       Respond ONLY in the $targetLanguage language. Do not include any introductory phrases like "Here is some advice:" or translations. Do not add quotation marks around your response.
       ''';
 
-    // ******** FIX: Removed invalid access to '.model' ********
-    _logger.i("Generating advice for mood: $mood in language: $targetLanguage with model: $_modelName"); // Log the stored name
+    _logger.i("Generating advice for mood: $mood in language: $targetLanguage with model: $_modelName");
 
     try {
       final content = [Content.text(prompt)];
@@ -79,7 +88,6 @@ class GeminiService {
       if (eString.contains('api key not valid')) {
           errorMessage = "Error: Invalid API Key. Please check GeminiService.";
       } else if (eString.contains('not found') || eString.contains('not supported')) {
-           // ******** FIX: Log the correct model name variable ********
           errorMessage = "Error: Configured AI model ($_modelName) unavailable. Check API key project permissions or model name in GeminiService.";
       } else if (eString.contains('quota') || eString.contains('limit')) {
            errorMessage = "Error: API quota exceeded. Please check your usage limits.";
