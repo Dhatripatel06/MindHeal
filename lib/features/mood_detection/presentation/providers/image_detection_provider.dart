@@ -1,5 +1,5 @@
 // File: lib/features/mood_detection/presentation/providers/image_detection_provider.dart
-// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-85536139ba7d179416053015e8b635520a2cb94e/lib/features/mood_detection/presentation/providers/image_detection_provider.dart
+// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-9ec59a8e9c3f581e228ffb77877573cbd015a410/lib/features/mood_detection/presentation/providers/image_detection_provider.dart
 
 import 'dart:io';
 import 'dart:async';
@@ -9,19 +9,15 @@ import 'package:camera/camera.dart';
 import '../../onnx_emotion_detection/data/services/onnx_emotion_service.dart'; //
 import '../../data/models/emotion_result.dart'; //
 
-// --- NEW IMPORTS ---
-import '../../../../core/services/gemini_service.dart';
-import '../../../../core/services/tts_service.dart';
-// --- END NEW IMPORTS ---
+import '../../../../core/services/gemini_service.dart'; //
+import '../../../../core/services/tts_service.dart'; //
 
 
 class ImageDetectionProvider with ChangeNotifier {
   final OnnxEmotionService _emotionService = OnnxEmotionService.instance; //
 
-  // --- NEW SERVICES ---
-  final GeminiService _geminiService = GeminiService();
-  final TtsService _ttsService = TtsService();
-  // --- END NEW SERVICES ---
+  final GeminiService _geminiService = GeminiService(); //
+  final TtsService _ttsService = TtsService(); //
 
   bool _isInitialized = false; //
   bool _isProcessing = false; //
@@ -32,15 +28,14 @@ class ImageDetectionProvider with ChangeNotifier {
   // Camera related
   CameraController? _cameraController; //
   bool _isRealTimeMode = false; //
-  Timer? _detectionTimer; // Use a timer instead of image stream //
+  Timer? _detectionTimer; //
 
-  // --- NEW STATE VARIABLES ---
-  String? _adviceText;
-  bool _isFetchingAdvice = false;
-  String _selectedLanguage = 'English'; // Default language
-  List<String> _availableLanguages = ['English', 'Hindi', 'Gujarati'];
-  TtsState _ttsState = TtsState.stopped;
-  // --- END NEW STATE VARIABLES ---
+  // Advice & TTS State
+  String? _adviceText; //
+  bool _isFetchingAdvice = false; //
+  String _selectedLanguage = 'English'; //
+  final List<String> _availableLanguages = ['English', 'Hindi', 'Gujarati']; //
+  TtsState _ttsState = TtsState.stopped; //
 
 
   // Getters
@@ -52,20 +47,20 @@ class ImageDetectionProvider with ChangeNotifier {
   bool get isRealTimeMode => _isRealTimeMode; //
   CameraController? get cameraController => _cameraController; //
 
-  // --- NEW GETTERS ---
-  String? get adviceText => _adviceText;
-  bool get isFetchingAdvice => _isFetchingAdvice;
-  String get selectedLanguage => _selectedLanguage;
-  List<String> get availableLanguages => _availableLanguages;
-  TtsState get ttsState => _ttsState;
-  bool get isSpeaking => _ttsState == TtsState.playing;
-  // --- END NEW GETTERS ---
+  // Advice & TTS Getters
+  String? get adviceText => _adviceText; //
+  bool get isFetchingAdvice => _isFetchingAdvice; //
+  String get selectedLanguage => _selectedLanguage; //
+  List<String> get availableLanguages => _availableLanguages; //
+  TtsState get ttsState => _ttsState; //
+  bool get isSpeaking => _ttsState == TtsState.playing; //
+
 
   ImageDetectionProvider() {
      // Listen to TTS state changes
-    _ttsService.onStateChanged = (state) {
-      _ttsState = state;
-      notifyListeners();
+    _ttsService.onStateChanged = (state) { //
+      _ttsState = state; //
+      notifyListeners(); //
     };
   }
 
@@ -90,12 +85,10 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Initialize camera for real-time detection
   Future<void> initializeCamera({bool useFrontCamera = true}) async {
-    // --- Added check ---
-    if (_cameraController != null && _cameraController!.value.isInitialized) {
+    if (_cameraController != null && _cameraController!.value.isInitialized) { //
        print("Camera already initialized.");
        return;
     }
-    // --- End Added check ---
     try {
       _error = null; //
       notifyListeners(); //
@@ -115,12 +108,11 @@ class ImageDetectionProvider with ChangeNotifier {
               orElse: () => cameras.first, //
             );
 
-      // Set imageFormatGroup to jpeg to ensure takePicture() returns a JPEG
       _cameraController = CameraController( //
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: ImageFormatGroup.jpeg, //
       );
 
       await _cameraController!.initialize(); //
@@ -135,17 +127,15 @@ class ImageDetectionProvider with ChangeNotifier {
   /// Switch camera (front/back)
   Future<void> switchCamera() async {
     if (_cameraController == null) return; //
-    if (_isRealTimeMode) await stopRealTimeDetection(); // Stop timer before switching //
+    if (_isRealTimeMode) await stopRealTimeDetection(); //
 
     try {
       final currentDirection = _cameraController!.description.lensDirection; //
       final useFront = currentDirection == CameraLensDirection.back; //
 
       await _cameraController?.dispose(); //
-      // --- Reset controller before initializing new one ---
-      _cameraController = null;
-      notifyListeners(); // Update UI if needed
-      // --- End Reset ---
+      _cameraController = null; //
+      notifyListeners(); //
       await initializeCamera(useFrontCamera: useFront); //
     } catch (e) {
       _error = 'Failed to switch camera: $e'; //
@@ -158,41 +148,33 @@ class ImageDetectionProvider with ChangeNotifier {
     if (!_isInitialized || _cameraController == null || !_cameraController!.value.isInitialized) { //
       throw Exception('Initialize camera first');
     }
-    if (_isRealTimeMode) return; // Already running //
+    if (_isRealTimeMode) return; //
 
     _isRealTimeMode = true; //
     notifyListeners(); //
 
-    // Start a periodic timer to take pictures
     _detectionTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async { //
-      if (_isProcessing || !_isRealTimeMode) return; // Skip if already processing or stopped //
+      if (_isProcessing || !_isRealTimeMode) return; //
 
       try {
         _isProcessing = true; //
-
-        // 1. Take a picture
         final XFile imageFile = await _cameraController!.takePicture(); //
-
-        // 2. Read bytes
         final imageBytes = await imageFile.readAsBytes(); //
 
-        // 3. Process image
         final result = _history.isNotEmpty //
             ? await _emotionService.detectEmotionsRealTime(imageBytes, //
                 previousResult: _history.first,
                 stabilizationFactor: 0.3)
             : await _emotionService.detectEmotions(imageBytes); //
 
-        // --- Clear advice when mood changes significantly ---
-        if (_currentResult?.emotion != result.emotion) {
-           _adviceText = null;
+        // Clear advice if mood changes
+        if (_currentResult?.emotion != result.emotion) { //
+           _adviceText = null; //
         }
-        // --- End Clear advice ---
 
         _currentResult = result; //
         _addToHistory(result); //
 
-        // 4. Clean up temp file
         try {
           await File(imageFile.path).delete(); //
         } catch (e) {
@@ -204,7 +186,7 @@ class ImageDetectionProvider with ChangeNotifier {
       } catch (e) {
         print('Real-time detection error: $e'); //
         _isProcessing = false; //
-         // Optionally notify listeners about the error or set an error state
+         // Optionally set error state
          // _error = 'Detection failed: $e';
          // notifyListeners();
       }
@@ -217,7 +199,7 @@ class ImageDetectionProvider with ChangeNotifier {
     _detectionTimer = null; //
     _isRealTimeMode = false; //
     _isProcessing = false; //
-    await _ttsService.stop(); // Stop speaking if active
+    await _ttsService.stop(); //
     notifyListeners(); //
   }
 
@@ -230,7 +212,7 @@ class ImageDetectionProvider with ChangeNotifier {
     try {
       _isProcessing = true; //
       _error = null; //
-      _adviceText = null; // Clear previous advice
+      _adviceText = null; //
       notifyListeners(); //
 
       final imageBytes = await imageFile.readAsBytes(); //
@@ -240,7 +222,7 @@ class ImageDetectionProvider with ChangeNotifier {
               previousResult: _history.first, stabilizationFactor: 0.2)
           : await _emotionService.detectEmotions(imageBytes); //
 
-      _currentResult = result; //
+      _currentResult = result; // Set this result as the current one //
       _addToHistory(result); //
 
       _isProcessing = false; //
@@ -264,7 +246,7 @@ class ImageDetectionProvider with ChangeNotifier {
     try {
       _isProcessing = true; //
       _error = null; //
-       _adviceText = null; // Clear previous advice
+       _adviceText = null; //
       notifyListeners(); //
 
       final imageBytesList = <Uint8List>[]; //
@@ -280,7 +262,7 @@ class ImageDetectionProvider with ChangeNotifier {
       }
 
       if (results.isNotEmpty) { //
-        _currentResult = results.last; //
+        _currentResult = results.last; // Set the last result as current //
       }
 
       _isProcessing = false; //
@@ -310,72 +292,72 @@ class ImageDetectionProvider with ChangeNotifier {
     notifyListeners(); //
   }
 
-  // --- NEW METHODS ---
-
   /// Set the language for advice and TTS
   void setLanguage(String language) {
-    if (_availableLanguages.contains(language)) {
-      _selectedLanguage = language;
-       // Clear advice when language changes, force refetch if needed
-      _adviceText = null;
-      _ttsService.stop(); // Stop speaking if language changes
-      notifyListeners();
+    if (_availableLanguages.contains(language)) { //
+      _selectedLanguage = language; //
+      _adviceText = null; // Clear advice when language changes //
+      _ttsService.stop(); //
+      notifyListeners(); //
     }
   }
 
   /// Fetch advice from Gemini based on the current mood and selected language
   Future<void> fetchAdvice() async {
-     if (_currentResult == null || _currentResult!.hasError || _currentResult!.emotion == 'none') {
-       _adviceText = "Detect a mood first to get advice.";
-       notifyListeners();
+     // Use the provider's currentResult as the context for advice
+     final moodToAdvise = _currentResult?.emotion;
+
+     if (moodToAdvise == null || moodToAdvise == 'none' || _currentResult!.hasError) { //
+       _adviceText = "Detect a valid mood first to get advice."; //
+       notifyListeners(); //
        return;
      }
-     if (!_geminiService.isAvailable) {
-       _adviceText = "Advice service is unavailable. Check API key.";
-        notifyListeners();
+     if (!_geminiService.isAvailable) { //
+       _adviceText = "Advice service is unavailable. Check API key."; //
+        notifyListeners(); //
        return;
      }
 
-     _isFetchingAdvice = true;
-     _adviceText = null; // Clear previous advice
-     await _ttsService.stop(); // Stop any previous speech
-     notifyListeners();
+     _isFetchingAdvice = true; //
+     _adviceText = null; // Clear previous advice while fetching //
+     _error = null; // Clear previous errors
+     await _ttsService.stop(); //
+     notifyListeners(); // Show loading state //
 
      try {
-       final advice = await _geminiService.getAdvice(
-         mood: _currentResult!.emotion,
-         language: _selectedLanguage,
+       final advice = await _geminiService.getAdvice( //
+         mood: moodToAdvise, // Use the determined mood
+         language: _selectedLanguage, //
        );
-       _adviceText = advice;
+       _adviceText = advice; //
      } catch(e) {
-       _adviceText = "Error fetching advice: $e";
+       _adviceText = "Error fetching advice: $e"; //
+       _error = _adviceText; // Also set general error
      } finally {
-       _isFetchingAdvice = false;
-       notifyListeners();
+       _isFetchingAdvice = false; //
+       notifyListeners(); // Update UI with advice or error //
      }
   }
 
   /// Speak the current advice text using TTS
   Future<void> speakAdvice() async {
-    if (_adviceText != null && _adviceText!.isNotEmpty && _ttsState != TtsState.playing) {
-      String langCode = 'en-US'; // Default
-      if (_selectedLanguage == 'Hindi') langCode = 'hi-IN';
-      if (_selectedLanguage == 'Gujarati') langCode = 'gu-IN';
+    if (_adviceText != null && _adviceText!.isNotEmpty && ! _adviceText!.startsWith("Error") && _ttsState != TtsState.playing) { //
+      String langCode = 'en-US'; // Default //
+      if (_selectedLanguage == 'Hindi') langCode = 'hi-IN'; //
+      if (_selectedLanguage == 'Gujarati') langCode = 'gu-IN'; //
 
-      await _ttsService.speak(_adviceText!, langCode);
-    } else if (_ttsState == TtsState.playing) {
-       await _ttsService.pause(); // Or stop() if you prefer
+      await _ttsService.speak(_adviceText!, langCode); //
+    } else if (_ttsState == TtsState.playing) { //
+       await _ttsService.pause(); // Or stop() //
     } else {
-      print("No advice text to speak or already speaking.");
+      print("No valid advice text to speak or already speaking."); //
     }
   }
 
   /// Stop TTS
   Future<void> stopSpeaking() async {
-     await _ttsService.stop();
+     await _ttsService.stop(); //
   }
-
-  // --- END NEW METHODS ---
 
   /// Get emotion statistics from history
   Map<String, int> getEmotionStatistics() {
@@ -411,23 +393,33 @@ class ImageDetectionProvider with ChangeNotifier {
         .key;
   }
 
-  /// Reset state
+  /// Reset ALL state (detection results, advice, errors)
   void reset() {
     _currentResult = null; //
     _error = null; //
-    _adviceText = null;
-    _isFetchingAdvice = false;
-    _ttsService.stop();
+    _adviceText = null; //
+    _isFetchingAdvice = false; //
+    _ttsService.stop(); //
+    // Don't reset _selectedLanguage, keep user's preference
     notifyListeners(); //
   }
+
+  // --- NEW METHOD ---
+  /// Resets only the advice-related state, typically called when navigating to a new result page.
+  void resetAdviceStateOnly() {
+    _adviceText = null;
+    _isFetchingAdvice = false;
+    _ttsService.stop(); // Stop speaking if advice context changes
+    notifyListeners();
+  }
+  // --- END NEW METHOD ---
+
 
   @override
   void dispose() {
     _detectionTimer?.cancel(); //
     _cameraController?.dispose(); //
-    // Do not dispose the singleton service here, let it live for the app
-    // _emotionService.dispose();
-    _ttsService.dispose(); // Dispose TTS service
+    _ttsService.dispose(); //
     super.dispose(); //
   }
 }

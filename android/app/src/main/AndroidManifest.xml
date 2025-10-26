@@ -39,7 +39,7 @@
         android:required="false" />
 
     <application
-        android:label="Mental Wellness App"
+        android:label="MindHeal"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme">
 
