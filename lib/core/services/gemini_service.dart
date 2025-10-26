@@ -18,11 +18,11 @@ class GeminiService {
   GenerativeModel? _model;
   final Logger _logger = Logger();
   // Using the standard 'gemini-pro' model name
-  final String _modelName = 'gemini-pro';
+  final String _modelName = 'gemini-1.5-flash-latest';
 
   GeminiService() {
     if (_apiKey.startsWith("<")) {
-      _logger.e("API Key not set in gemini_service.dart. Replace AIzaSyBvTKZkBbsYcLmLREqc0Bnxu1pn3dxPNLg");
+      _logger.e("API Key not set in gemini_service.dart. Replace AIzaSyDK6KZrkqJRlFoCw4RU06pUNTm-vl69GzQ");
     } else {
       try {
         _model = GenerativeModel(
