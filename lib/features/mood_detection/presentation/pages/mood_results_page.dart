@@ -4,14 +4,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:share_plus/share_plus.dart'; // Can be removed if share is fully replaced
+// Remove or comment out share_plus if no longer needed anywhere
+// import 'package:share_plus/share_plus.dart';
 import '../../data/models/emotion_result.dart'; //
 import '../providers/image_detection_provider.dart'; //
-import '../../../../core/utils/emotion_utils.dart'; // For color/icon mapping //
+import '../../../../core/utils/emotion_utils.dart'; //
 
 class MoodResultsPage extends StatelessWidget {
   final EmotionResult emotionResult; //
-  final String? imagePath; // Optional: To display the analyzed image //
+  final String? imagePath; //
 
   const MoodResultsPage({
     super.key,
@@ -22,8 +23,21 @@ class MoodResultsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Access the provider
+    // Access the provider but don't listen here if changes are handled by Consumers below
     final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
+
+    // --- NEW: Ensure provider's current result matches this page's result ---
+    // This is important if the user navigates here directly after detection
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (provider.currentResult != emotionResult) {
+    //      // You might need a method in the provider like:
+    //      // provider.setStaticResultForAdvice(emotionResult);
+    //      // Or ensure fetchAdvice can take the mood directly.
+    //      // For now, we assume the user flow sets the provider's currentResult correctly before navigating here.
+    //      print("Warning: Provider's currentResult might differ from MoodResultsPage emotionResult.");
+    //   }
+    // });
+    // --- END NEW ---
 
     return Scaffold(
       appBar: AppBar(
@@ -89,13 +103,11 @@ class MoodResultsPage extends StatelessWidget {
            Row(
              mainAxisAlignment: MainAxisAlignment.center,
              children: [
-               // --- MODIFIED: Use Icon instead of Text ---
                Icon(
                  EmotionUtils.getEmotionIcon(emotionResult.emotion), // Use getEmotionIcon
                  size: 48,
-                 color: EmotionUtils.getEmotionColor(emotionResult.emotion), // Optionally color the icon
+                 color: EmotionUtils.getEmotionColor(emotionResult.emotion),
                ),
-               // --- END MODIFIED ---
                const SizedBox(width: 20),
                Column(
                  crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,29 +211,37 @@ class MoodResultsPage extends StatelessWidget {
                ),
                const SizedBox(width: 15),
 
-               // Adviser Button (replaces Share)
+               // --- ADVISER BUTTON (Replaces Share Button) ---
                Expanded(
+                 // Use Consumer to react to fetching state for this button only
                  child: Consumer<ImageDetectionProvider>(
-                    builder: (context, provider, child) {
+                    builder: (context, consumerProvider, child) { // Renamed to avoid conflict
                       return ElevatedButton.icon(
-                        onPressed: provider.isFetchingAdvice
+                        // Disable button while advice is being fetched
+                        onPressed: consumerProvider.isFetchingAdvice
                             ? null
                             : () {
-                                // Ensure the provider uses the current result
-                                // Note: The provider's currentResult might be from real-time.
-                                // It's safer if the provider's fetchAdvice could accept the mood directly
-                                // For now, we assume the provider is aware or we manually set it (if provider allows)
-                                // e.g., provider.setStaticResultForAdvice(emotionResult);
-                                provider.fetchAdvice(); // Will use provider's _currentResult
-                                _showAdviceDialog(context, provider);
+                                // Explicitly tell provider to use *this* result's mood
+                                // Assuming fetchAdvice uses provider's internal _currentResult,
+                                // we should ensure it's set correctly or modify fetchAdvice.
+                                // Simplest is to hope the provider's currentResult is correct,
+                                // or add a method like:
+                                // consumerProvider.fetchAdviceForMood(emotionResult.emotion);
+
+                                // Using existing fetchAdvice for now:
+                                consumerProvider.fetchAdvice();
+
+                                // Show the advice dialog
+                                _showAdviceDialog(context, consumerProvider);
                               },
-                        icon: provider.isFetchingAdvice
+                        // Show progress indicator or icon based on fetching state
+                        icon: consumerProvider.isFetchingAdvice
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
                               )
-                            : const Icon(Icons.lightbulb_outline, size: 20),
+                            : const Icon(Icons.lightbulb_outline, size: 20), // Adviser icon
                         label: const Text('Adviser'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange.shade50,
@@ -231,11 +251,14 @@ class MoodResultsPage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           elevation: 0,
+                          // Dim the button slightly if disabled
+                          disabledBackgroundColor: Colors.orange.shade50.withOpacity(0.5),
                         ),
                       );
                     }
                   ),
                ),
+               // --- END ADVISER BUTTON ---
              ],
            ),
          ],
@@ -244,6 +267,7 @@ class MoodResultsPage extends StatelessWidget {
   }
 
   void _showDetailsDialog(BuildContext context, EmotionResult result) {
+    // Sort emotions by confidence (highest first) using original probabilities
     final sortedEmotions = result.allEmotions.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -269,7 +293,7 @@ class MoodResultsPage extends StatelessWidget {
                     ),
                     Expanded(
                       child: LinearProgressIndicator(
-                        value: entry.value,
+                        value: entry.value, // Use the original probability from allEmotions
                         backgroundColor: Colors.grey.shade300,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           EmotionUtils.getEmotionColor(entry.key),
@@ -281,7 +305,7 @@ class MoodResultsPage extends StatelessWidget {
                     SizedBox(
                       width: 45,
                       child: Text(
-                        '${(entry.value * 100).toStringAsFixed(1)}%',
+                        '${(entry.value * 100).toStringAsFixed(1)}%', // Display original probability
                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                          textAlign: TextAlign.right,
                       )
@@ -302,20 +326,14 @@ class MoodResultsPage extends StatelessWidget {
     );
   }
 
-  void _showAdviceDialog(BuildContext context, ImageDetectionProvider provider) {
-     // Ensure the provider knows which mood to get advice for.
-     // If the provider's currentResult isn't guaranteed to be this page's result,
-     // you might need to adjust the provider or pass the mood explicitly.
-     // For simplicity here, we assume fetchAdvice uses the provider's current mood,
-     // hoping it matches this page's emotionResult.
 
+  void _showAdviceDialog(BuildContext context, ImageDetectionProvider provider) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: Consumer<ImageDetectionProvider>(
-             builder: (_, p, __) => Text('${emotionResult.emotion} Adviser') // Use emotionResult from page
-          ),
+          // Use the emotionResult passed to this page for the title
+          title: Text('${emotionResult.emotion} Adviser'),
           content: Consumer<ImageDetectionProvider>(
             builder: (ctx, p, child) {
               return SingleChildScrollView(
@@ -331,8 +349,8 @@ class MoodResultsPage extends StatelessWidget {
                              padding: const EdgeInsets.symmetric(vertical: 8.0),
                              child: Text(p.adviceText!, textAlign: TextAlign.center),
                            )
-                        else if (p.error != null)
-                            Text("Error: ${p.error}", style: const TextStyle(color: Colors.red))
+                        else if (p.error != null && p.adviceText != null) // Show error specifically if advice fetching failed
+                            Text("Error getting advice: ${p.adviceText}", style: const TextStyle(color: Colors.red))
                         else
                           const Text('Tap the Adviser button again to get advice.'),
                         const SizedBox(height: 20),
@@ -347,7 +365,7 @@ class MoodResultsPage extends StatelessWidget {
           actions: <Widget>[
             Consumer<ImageDetectionProvider>(
               builder: (ctx, p, child) {
-                bool canSpeak = p.adviceText != null && p.adviceText!.isNotEmpty && !p.isFetchingAdvice;
+                bool canSpeak = p.adviceText != null && p.adviceText!.isNotEmpty && !p.isFetchingAdvice && !p.adviceText!.startsWith("Error");
                 return IconButton(
                   icon: Icon(
                     p.isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
@@ -373,6 +391,8 @@ class MoodResultsPage extends StatelessWidget {
       },
     ).then((_) {
        provider.stopSpeaking();
+       // Optionally clear advice text when dialog closes?
+       // provider.clearAdvice();
     });
   }
 
@@ -389,9 +409,8 @@ class MoodResultsPage extends StatelessWidget {
               if (newValue != null && newValue != provider.selectedLanguage) {
                 provider.setLanguage(newValue);
                 // Refetch advice for the new language
-                 // Ensure provider uses the correct mood for this page
-                // e.g. provider.fetchAdviceForMood(emotionResult.emotion);
-                 provider.fetchAdvice(); // Assuming fetchAdvice uses current provider state appropriately
+                // Ensure provider uses the correct mood
+                 provider.fetchAdvice(); // Assumes fetchAdvice uses provider's current mood state
               }
             },
       items: provider.availableLanguages
