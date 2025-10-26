@@ -1,18 +1,19 @@
 // File: lib/features/mood_detection/presentation/pages/mood_results_page.dart
-// *** FINAL CORRECTED VERSION WITH ADVISER BUTTON ***
+// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-e7d11e8428e1bb750da91bf0de1b159359357573/lib/features/mood_detection/presentation/pages/mood_results_page.dart
+// *** MODIFIED TO REPLACE SHARE WITH ADVISER BUTTON ***
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// Removed SharePlus import as the button is replaced
-// import 'package:share_plus/share_plus.dart';
-import '../../data/models/emotion_result.dart';
-import '../providers/image_detection_provider.dart';
-import '../../../../core/utils/emotion_utils.dart'; // For color/icon mapping
+// Commented out Share Plus as it's replaced
+import 'package:share_plus/share_plus.dart';
+import '../../data/models/emotion_result.dart'; //
+import '../providers/image_detection_provider.dart'; //
+import '../../../../core/utils/emotion_utils.dart'; //
 
 class MoodResultsPage extends StatelessWidget {
-  final EmotionResult emotionResult;
-  final String? imagePath; // Optional: To display the analyzed image
+  final EmotionResult emotionResult; //
+  final String? imagePath; //
 
   const MoodResultsPage({
     super.key,
@@ -20,28 +21,44 @@ class MoodResultsPage extends StatelessWidget {
     this.imagePath,
   });
 
+  // Share function - kept for reference if needed later
+  Future<void> _shareResult(BuildContext context) async { //
+    try {
+      final text = 'I\'m feeling ${emotionResult.emotion}! Mood detected with ${(emotionResult.confidence * 100).toStringAsFixed(1)}% confidence via MindHeal.'; //
+      if (imagePath != null && imagePath!.isNotEmpty) { //
+        await Share.shareXFiles([XFile(imagePath!)], text: text); //
+      } else {
+        await Share.share(text); //
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar( //
+        SnackBar(content: Text('Error sharing result: $e')),
+      );
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
-    // Access the provider but don't listen here if changes are handled by Consumers below
+    // Access the provider
     final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
 
     // Reset advice state when entering this page for a specific result.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-       provider.resetAdviceStateOnly();
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       provider.resetAdviceStateOnly(); // Ensure this method exists in your provider
     });
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mood Analysis Result'),
-        backgroundColor: EmotionUtils.getEmotionColor(emotionResult.emotion).withOpacity(0.8),
+        title: const Text('Mood Analysis Result'), //
+        backgroundColor: EmotionUtils.getEmotionColor(emotionResult.emotion).withOpacity(0.8), //
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0), //
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (imagePath != null)
+            if (imagePath != null) //
               Padding(
                 padding: const EdgeInsets.only(bottom: 20.0),
                 child: ClipRRect(
@@ -165,12 +182,12 @@ class MoodResultsPage extends StatelessWidget {
                // --- Details Button ---
                Expanded(
                  child: ElevatedButton.icon(
-                   onPressed: () {
+                   onPressed: () { //
                      _showDetailsDialog(context, result); // Use result passed to method
                    },
-                   icon: const Icon(Icons.description, size: 20),
-                   label: const Text('Details'),
-                   style: ElevatedButton.styleFrom(
+                   icon: const Icon(Icons.description, size: 20), //
+                   label: const Text('Details'), //
+                   style: ElevatedButton.styleFrom( //
                      backgroundColor: Colors.blue.shade50,
                      foregroundColor: Colors.blue.shade700,
                      padding: const EdgeInsets.symmetric(vertical: 12),
@@ -184,14 +201,14 @@ class MoodResultsPage extends StatelessWidget {
                // --- Save Button ---
                Expanded(
                  child: ElevatedButton.icon(
-                   onPressed: () {
+                   onPressed: () { //
                      ScaffoldMessenger.of(context).showSnackBar(
                        const SnackBar(content: Text('Save functionality not implemented yet.')),
                      );
                    },
-                   icon: const Icon(Icons.save_alt, size: 20),
-                   label: const Text('Save'),
-                   style: ElevatedButton.styleFrom(
+                   icon: const Icon(Icons.save_alt, size: 20), //
+                   label: const Text('Save'), //
+                   style: ElevatedButton.styleFrom( //
                      backgroundColor: Colors.green.shade50,
                      foregroundColor: Colors.green.shade700,
                      padding: const EdgeInsets.symmetric(vertical: 12),
