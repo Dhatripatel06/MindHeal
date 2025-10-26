@@ -1,13 +1,12 @@
 // File: lib/features/mood_detection/presentation/pages/image_mood_detection_page.dart
-// *** CORRECTED FILE WITH ADVISER CHIP & LOADING INDICATOR FIX ***
+// *** CORRECTED FILE WITH ADVISER CHIP & ERROR FIXES ***
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/image_detection_provider.dart';
-// Removed MoodResultsPage import
-// import 'mood_results_page.dart';
+// import 'mood_results_page.dart'; // No longer used
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../data/models/emotion_result.dart';
 import '../../../../core/utils/emotion_utils.dart';
@@ -104,9 +103,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
         _currentEmotionResult = result; // Store result to display locally
          _isProcessing = false; //
       });
-      if (!result.hasError) { // Only animate if successful
-         _resultCardAnimationController.forward();
-      }
+      // Animate card in, even if it's an error card
+      _resultCardAnimationController.forward();
 
       // --- NO NAVIGATION HERE ---
 
@@ -133,7 +131,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     );
   }
 
-  // Share function - kept for reference if needed elsewhere
+  // Share function - kept for reference
   Future<void> _shareResult(EmotionResult result) async { //
     if (_selectedImage == null) return;
     try {
@@ -170,7 +168,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: _isProcessing
-                      // ***** FIX: Removed 'text' parameter *****
+                      // ***** FIX 1: Removed 'text' parameter *****
                       ? const LoadingIndicator() // Use without 'text'
                       : _selectedImage != null
                           ? ClipRRect( //
@@ -207,7 +205,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                           child: _buildResultDisplay(context, _currentEmotionResult!), // Display result or error
                         )
                        // Show nothing or a placeholder while no result
-                       : const SizedBox.shrink(),
+                       : const SizedBox(height: 100), // Reserve some space
                  ),
               ),
 
@@ -249,7 +247,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     // Access provider for advice state
     final provider = Provider.of<ImageDetectionProvider>(context, listen: false);
 
-    // --- FIX: Handle error state display ---
+    // --- FIX 2: Handle error state display ---
     if (result.hasError) { //
        return Card(
           elevation: 4.0,
@@ -296,11 +294,9 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
 
      // Find second best emotion if needed
      Map<String, dynamic>? secondBestEmotion; //
-     // Ensure allEmotions is not null and has entries before sorting
      if (result.allEmotions.isNotEmpty && result.confidence < 0.85) { //
        final sortedEmotions = result.allEmotions.entries.toList() //
          ..sort((a, b) => b.value.compareTo(a.value));
-       // Check length before accessing index 1
        if (sortedEmotions.length > 1 && sortedEmotions[1].value > 0.1) { //
          secondBestEmotion = { //
            'emotion': sortedEmotions[1].key,
@@ -427,7 +423,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
             // === ACTION CHIPS ROW (Wrap) - UPDATED === //
             // ======================================== //
             Wrap( //
-              spacing: 10, // Horizontal spacing
+              spacing: 10, // Horizontal spacing //
               runSpacing: 8, // Vertical spacing if they wrap
               alignment: WrapAlignment.center, // Center the chips
               children: [
@@ -446,7 +442,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                   onTap: () => _saveResult(result), //
                 ),
 
-                // --- ADVISER CHIP (Replaces Share Chip) ---
+                // --- FIX 3: ADVISER CHIP (Replaces Share Chip) ---
                  Consumer<ImageDetectionProvider>( // Consumer for loading state
                    builder: (context, consumerProvider, child) {
                      return _buildActionChip(
@@ -461,6 +457,7 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                         onTap: consumerProvider.isFetchingAdvice
                             ? (){} // Do nothing if already fetching
                             : () { // Fetch advice on tap
+                                // Use the method that takes the mood directly
                                 consumerProvider.fetchAdviceForMood(result.emotion);
                                 _showAdviceDialog(context, consumerProvider, result.emotion);
                               },
@@ -471,11 +468,11 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
 
                  // --- Original Share Chip (REMOVED) ---
                  /*
-                 _buildActionChip(
-                   icon: Icons.share_outlined,
-                   label: 'Share',
-                   color: Colors.orange,
-                   onTap: () => _shareResult(result),
+                 _buildActionChip( //
+                   icon: Icons.share_outlined, //
+                   label: 'Share', //
+                   color: Colors.orange, //
+                   onTap: () => _shareResult(result), //
                  ),
                  */
                  // --- End Original Share Chip ---
