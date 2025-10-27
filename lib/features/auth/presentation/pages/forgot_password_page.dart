@@ -142,7 +142,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            authProvider.state.errorMessage!,
+                            authProvider.state.errorMessage,
                             style: TextStyle(color: Colors.red.shade600),
                           ),
                         ),

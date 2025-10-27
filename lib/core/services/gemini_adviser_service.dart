@@ -217,5 +217,5 @@ Please provide your compassionate advice now:
 
   /// Check if the service is properly configured
   bool get isConfigured =>
-      _apiKey != 'AIzaSyAlMRu3tsO7ShCnB3uoOWWOMdpO0OnWyO0' && _apiKey.isNotEmpty;
+      _apiKey != 'AIzaSyCo-W4OLgEIx0mKVIqdMmlsk7XydSTmDw4' && _apiKey.isNotEmpty;
 }

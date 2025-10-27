@@ -612,7 +612,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MoodResultsPage(result: result),
+        builder: (context) => MoodResultsPage(emotionResult: result),
       ),
     );
   }

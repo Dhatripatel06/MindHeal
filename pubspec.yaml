@@ -88,11 +88,10 @@ dependencies:
   #google_mlkit_face_detection: ^0.13.1
 
   # For Text-to-Speech
-  flutter_tts: ^4.2.3
-
-  # Google Generative AI for mood-based counseling
-  google_generative_ai: ^0.4.3
-
+  # Add these lines
+  google_generative_ai: ^0.4.3 # Check pub.dev for the latest version
+  flutter_tts: ^4.0.2        # Check pub.dev for the latest version
+  
 
   #record: ^5.0.4
   record: ^6.1.1

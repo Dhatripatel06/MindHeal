@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/auth/presentation/pages/email_verification_page.dart';
 import 'package:mental_wellness_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:mental_wellness_app/features/settings/presentation/pages/settings_page.dart';
@@ -40,10 +41,11 @@ import '../features/audio_healing/presentation/pages/audio_healing_page.dart';
 import '../features/biofeedback/presentation/providers/biofeedback_provider.dart';
 import '../features/biofeedback/presentation/providers/camera_heart_rate_provider.dart';
 
+// Splash Screen
+import '../presentation/widgets/custom_splash_screen.dart';
+
 // Theme
 import 'theme.dart';
-
-import 'package:flutter/services.dart';
 
 class AssetDebugService {
   static Future<void> checkAssets() async {
@@ -135,11 +137,8 @@ class MentalWellnessApp extends StatelessWidget {
                 requiredFeature: 'biofeedback',
                 child: const BiofeedbackPage(),
               ),
-          '/chat': (context) => RouteGuard(
-                requiredFeature: 'chat',
-                child: const ChatPage(),
-              ),
-          
+          '/chat': (context) =>
+              RouteGuard(requiredFeature: 'chat', child: const ChatPage()),
         },
       ),
     );

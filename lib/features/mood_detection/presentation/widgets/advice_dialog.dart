@@ -6,10 +6,7 @@ import '../../../../core/services/gemini_adviser_service.dart';
 class AdviceDialog extends StatefulWidget {
   final EmotionResult emotionResult;
 
-  const AdviceDialog({
-    super.key,
-    required this.emotionResult,
-  });
+  const AdviceDialog({super.key, required this.emotionResult});
 
   @override
   State<AdviceDialog> createState() => _AdviceDialogState();
@@ -51,64 +48,93 @@ class _AdviceDialogState extends State<AdviceDialog>
     );
 
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.elasticOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
     _animationController.forward();
   }
 
   Future<void> _initializeTts() async {
-    await _flutterTts.setVolume(0.8);
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.setPitch(1.0);
+    try {
+      // Wait for TTS engine to be available
+      await Future.delayed(const Duration(milliseconds: 1000));
 
-    _flutterTts.setStartHandler(() {
-      setState(() {
-        _isSpeaking = true;
-        _isPaused = false;
-      });
-    });
+      // Check if TTS is available
+      var engines = await _flutterTts.getEngines;
+      if (engines.isEmpty) {
+        print('No TTS engines available');
+        return;
+      }
 
-    _flutterTts.setCompletionHandler(() {
-      setState(() {
-        _isSpeaking = false;
-        _isPaused = false;
-      });
-    });
+      // Initialize TTS settings
+      await _flutterTts.setVolume(0.8);
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.setPitch(1.0);
 
-    _flutterTts.setPauseHandler(() {
-      setState(() {
-        _isPaused = true;
-      });
-    });
+      // Set default language and check availability
+      var isAvailable = await _flutterTts.isLanguageAvailable('en-US');
+      if (isAvailable == true) {
+        await _flutterTts.setLanguage('en-US');
+      }
 
-    _flutterTts.setContinueHandler(() {
-      setState(() {
-        _isPaused = false;
+      _flutterTts.setStartHandler(() {
+        if (mounted) {
+          setState(() {
+            _isSpeaking = true;
+            _isPaused = false;
+          });
+        }
       });
-    });
 
-    _flutterTts.setErrorHandler((msg) {
-      setState(() {
-        _isSpeaking = false;
-        _isPaused = false;
+      _flutterTts.setCompletionHandler(() {
+        if (mounted) {
+          setState(() {
+            _isSpeaking = false;
+            _isPaused = false;
+          });
+        }
       });
-    });
+
+      _flutterTts.setPauseHandler(() {
+        if (mounted) {
+          setState(() {
+            _isPaused = true;
+          });
+        }
+      });
+
+      _flutterTts.setContinueHandler(() {
+        if (mounted) {
+          setState(() {
+            _isPaused = false;
+          });
+        }
+      });
+
+      _flutterTts.setErrorHandler((msg) {
+        if (mounted) {
+          setState(() {
+            _isSpeaking = false;
+            _isPaused = false;
+          });
+        }
+      });
+    } catch (e) {
+      print('TTS Initialization Error: $e');
+    }
   }
 
   @override
   void dispose() {
-    _flutterTts.stop();
+    try {
+      _flutterTts.stop();
+    } catch (e) {
+      print('TTS Dispose Error: $e');
+    }
     _animationController.dispose();
     super.dispose();
   }
@@ -150,25 +176,94 @@ class _AdviceDialogState extends State<AdviceDialog>
   Future<void> _speakAdvice() async {
     if (_advice == null || _advice!.isEmpty) return;
 
-    await _flutterTts.stop();
+    try {
+      // Check if TTS engine is available before trying to use it
+      var engines = await _flutterTts.getEngines;
+      if (engines.isEmpty) {
+        _showTtsNotAvailableMessage();
+        return;
+      }
 
-    // Set language for TTS
-    String languageCode = _getLanguageCode(_selectedLanguage);
-    await _flutterTts.setLanguage(languageCode);
+      await _flutterTts.stop();
 
-    await _flutterTts.speak(_advice!);
+      // Set language for TTS and check if it's available
+      String languageCode = _getLanguageCode(_selectedLanguage);
+      var isAvailable = await _flutterTts.isLanguageAvailable(languageCode);
+
+      if (isAvailable == true) {
+        await _flutterTts.setLanguage(languageCode);
+      } else {
+        // Fallback to English if selected language is not available
+        await _flutterTts.setLanguage('en-US');
+      }
+
+      // Wait a bit for TTS to be ready
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      var result = await _flutterTts.speak(_advice!);
+      if (result == 0) {
+        // Speech started successfully
+        print('TTS started successfully');
+      }
+    } catch (e) {
+      print('TTS Speak Error: $e');
+      _showTtsNotAvailableMessage();
+    }
+  }
+
+  void _showTtsNotAvailableMessage() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.warning, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Text-to-speech is not available. Please install Google TTS or enable speech services.',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _pauseResumeSpeech() async {
-    if (_isSpeaking && !_isPaused) {
-      await _flutterTts.pause();
-    } else if (_isPaused) {
-      await _flutterTts.speak(_advice!);
+    try {
+      var engines = await _flutterTts.getEngines;
+      if (engines.isEmpty) {
+        _showTtsNotAvailableMessage();
+        return;
+      }
+
+      if (_isSpeaking && !_isPaused) {
+        await _flutterTts.pause();
+      } else if (_isPaused) {
+        await _flutterTts.speak(_advice!);
+      }
+    } catch (e) {
+      print('TTS Pause/Resume Error: $e');
+      _showTtsNotAvailableMessage();
     }
   }
 
   Future<void> _stopSpeech() async {
-    await _flutterTts.stop();
+    try {
+      await _flutterTts.stop();
+    } catch (e) {
+      print('TTS Stop Error: $e');
+    }
   }
 
   String _getLanguageCode(String language) {
@@ -279,11 +374,7 @@ class _AdviceDialogState extends State<AdviceDialog>
                     color: Colors.white.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
                 ),
               ),
             ],
@@ -302,40 +393,46 @@ class _AdviceDialogState extends State<AdviceDialog>
         color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: _languages.map((lang) {
-          final isSelected = _selectedLanguage == lang['name'];
-          return GestureDetector(
-            onTap: () => _changeLanguage(lang['name']!),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    lang['flag']!,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    lang['name']!,
-                    style: TextStyle(
-                      color: isSelected ? Colors.purple.shade600 : Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: _languages.map((lang) {
+            final isSelected = _selectedLanguage == lang['name'];
+            return GestureDetector(
+              onTap: () => _changeLanguage(lang['name']!),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(lang['flag']!, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        lang['name']!,
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.purple.shade600
+                              : Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -362,8 +459,9 @@ class _AdviceDialogState extends State<AdviceDialog>
         color: _getEmotionColor(widget.emotionResult.emotion).withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color:
-              _getEmotionColor(widget.emotionResult.emotion).withOpacity(0.3),
+          color: _getEmotionColor(
+            widget.emotionResult.emotion,
+          ).withOpacity(0.3),
         ),
       ),
       child: Row(
@@ -371,8 +469,9 @@ class _AdviceDialogState extends State<AdviceDialog>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _getEmotionColor(widget.emotionResult.emotion)
-                  .withOpacity(0.2),
+              color: _getEmotionColor(
+                widget.emotionResult.emotion,
+              ).withOpacity(0.2),
               shape: BoxShape.circle,
             ),
             child: Text(
@@ -447,10 +546,7 @@ class _AdviceDialogState extends State<AdviceDialog>
           ),
           Text(
             _getLocalizedText('pleaseWait'),
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.blue.shade600,
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.blue.shade600),
           ),
         ],
       ),
@@ -467,11 +563,7 @@ class _AdviceDialogState extends State<AdviceDialog>
       ),
       child: Column(
         children: [
-          Icon(
-            Icons.error_outline,
-            color: Colors.red.shade600,
-            size: 48,
-          ),
+          Icon(Icons.error_outline, color: Colors.red.shade600, size: 48),
           const SizedBox(height: 12),
           Text(
             _getLocalizedText('adviceError'),
@@ -551,11 +643,7 @@ class _AdviceDialogState extends State<AdviceDialog>
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.volume_up,
-            color: Colors.blue.shade600,
-            size: 20,
-          ),
+          Icon(Icons.volume_up, color: Colors.blue.shade600, size: 20),
           const SizedBox(width: 8),
           Text(
             _getLocalizedText('readAloud'),
@@ -577,8 +665,8 @@ class _AdviceDialogState extends State<AdviceDialog>
                 color: Colors.blue,
                 tooltip: _isSpeaking
                     ? (_isPaused
-                        ? _getLocalizedText('resume')
-                        : _getLocalizedText('pause'))
+                          ? _getLocalizedText('resume')
+                          : _getLocalizedText('pause'))
                     : _getLocalizedText('play'),
               ),
               const SizedBox(width: 8),
