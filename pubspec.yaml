@@ -90,7 +90,8 @@ dependencies:
   # For Text-to-Speech
   flutter_tts: ^4.2.3
 
-  #google_generative_ai: ^0.2.2
+  # Google Generative AI for mood-based counseling
+  google_generative_ai: ^0.4.3
 
 
   #record: ^5.0.4

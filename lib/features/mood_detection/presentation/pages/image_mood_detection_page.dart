@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../../data/models/emotion_result.dart';
 import '../../onnx_emotion_detection/data/services/onnx_emotion_service.dart';
+import '../../../../core/services/gemini_adviser_service.dart';
+import '../widgets/advice_dialog.dart';
 
 class ImageMoodDetectionPage extends StatefulWidget {
   const ImageMoodDetectionPage({super.key});
@@ -648,10 +650,10 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
                   onTap: () => _saveResult(result),
                 ),
                 _buildActionChip(
-                  icon: Icons.share_outlined,
-                  label: 'Share',
-                  color: Colors.orange,
-                  onTap: () => _shareResult(result),
+                  icon: Icons.psychology_outlined,
+                  label: 'Adviser',
+                  color: Colors.purple,
+                  onTap: () => _getAdvice(result),
                 ),
               ],
             ),
@@ -855,7 +857,6 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
       });
 
       _animationController.forward();
-
     } catch (e) {
       setState(() {
         _errorMessage = 'Analysis error: $e';
@@ -912,20 +913,8 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
     );
   }
 
-  void _shareResult(EmotionResult result) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.share, color: Colors.white),
-            const SizedBox(width: 8),
-            Text('Sharing ${result.emotion} analysis...'),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _getAdvice(EmotionResult result) {
+    _showAdviceDialog(result);
   }
 
   void _showDetails(EmotionResult result) {
@@ -1133,6 +1122,16 @@ class _ImageMoodDetectionPageState extends State<ImageMoodDetectionPage>
             child: const Text('Continue'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showAdviceDialog(EmotionResult result) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AdviceDialog(
+        emotionResult: result,
       ),
     );
   }
