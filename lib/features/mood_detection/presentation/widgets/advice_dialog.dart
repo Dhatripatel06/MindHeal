@@ -207,34 +207,44 @@ class _AdviceDialogState extends State<AdviceDialog>
       }
     } catch (e) {
       print('TTS Speak Error: $e');
-      _showTtsNotAvailableMessage();
+      // Only show error dialog if we haven't already shown one recently
+      if (mounted && !_isSpeaking) {
+        _showTtsNotAvailableMessage();
+      }
     }
   }
 
   void _showTtsNotAvailableMessage() {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.warning, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.warning, color: Colors.orange.shade600),
+                const SizedBox(width: 8),
+                const Text('TTS Not Available'),
+              ],
+            ),
+            content: const Text(
+              'Text-to-speech is not available. Please install Google TTS or enable speech services on your device.',
+              style: TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
                 child: Text(
-                  'Text-to-speech is not available. Please install Google TTS or enable speech services.',
-                  style: const TextStyle(fontSize: 14),
+                  'OK',
+                  style: TextStyle(color: Colors.orange.shade600),
                 ),
               ),
             ],
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'OK',
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
-        ),
+          );
+        },
       );
     }
   }
