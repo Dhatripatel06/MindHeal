@@ -41,8 +41,7 @@ import '../features/audio_healing/presentation/pages/audio_healing_page.dart';
 import '../features/biofeedback/presentation/providers/biofeedback_provider.dart';
 import '../features/biofeedback/presentation/providers/camera_heart_rate_provider.dart';
 
-// Splash Screen
-import '../presentation/widgets/custom_splash_screen.dart';
+
 
 // Theme
 import 'theme.dart';
