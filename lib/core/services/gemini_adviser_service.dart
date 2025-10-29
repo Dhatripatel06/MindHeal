@@ -17,7 +17,7 @@ class GeminiAdviserService {
         temperature: 0.7,
         topK: 40,
         topP: 0.9,
-        maxOutputTokens: 500,
+        maxOutputTokens: 1000,
       ),
       safetySettings: [
         SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
@@ -36,7 +36,8 @@ class GeminiAdviserService {
     String language = 'English',
   }) async {
     try {
-      log('Getting emotional advice for: $detectedEmotion with confidence: ${(confidence * 100).toInt()}% in $language');
+      log('🤖 Getting emotional advice for: $detectedEmotion with confidence: ${(confidence * 100).toInt()}% in $language');
+      log('🔑 API Key configured: ${_apiKey.isNotEmpty && _apiKey != "YOUR_API_KEY_HERE"}');
 
       final prompt = _buildAdvicePrompt(
         emotion: detectedEmotion,
@@ -45,17 +46,27 @@ class GeminiAdviserService {
         language: language,
       );
 
+      log('📝 Generated prompt length: ${prompt.length} characters');
+      log('📝 First 200 chars of prompt: ${prompt.substring(0, prompt.length > 200 ? 200 : prompt.length)}...');
+
       final content = [Content.text(prompt)];
+
+      log('🌐 Calling Gemini API with model: gemini-2.0-flash-exp');
       final response = await _model.generateContent(content);
 
+      log('📨 Received response from Gemini API');
+
       if (response.text != null && response.text!.isNotEmpty) {
-        log('Received advice response: ${response.text!.substring(0, 100)}...');
+        log('✅ Received advice response length: ${response.text!.length} characters');
+        log('✅ First 100 chars: ${response.text!.substring(0, response.text!.length > 100 ? 100 : response.text!.length)}...');
         return response.text!;
       } else {
+        log('❌ Empty response from Gemini API');
         throw Exception('Empty response from Gemini API');
       }
     } catch (e) {
-      log('Error getting emotional advice: $e');
+      log('❌ Error getting emotional advice: $e');
+      log('🔄 Using fallback advice for $detectedEmotion in $language');
       return _getFallbackAdvice(detectedEmotion, language);
     }
   }
@@ -73,13 +84,13 @@ class GeminiAdviserService {
     return '''
 You are MindHeal AI, a compassionate and professional mental wellness counselor and supportive friend. A person has just had their emotional state analyzed, and you need to provide personalized, empathetic advice.
 
+**CRITICAL LANGUAGE REQUIREMENT:**
+$languageInstruction
+
 **Analysis Results:**
 - Detected Emotion: ${emotion.toUpperCase()}
 - Confidence Level: ${(confidence * 100).toInt()}% ($confidenceLevel)
 ${context != null ? '- Additional Context: $context' : ''}
-
-**Language Requirement:**
-$languageInstruction
 
 **Your Role:**
 Act as both a caring friend and a professional counselor. Provide advice that is:
@@ -149,17 +160,35 @@ Please provide your compassionate advice now:
   String _getLanguageInstruction(String language) {
     switch (language) {
       case 'हिंदी':
-        return 'Please respond in Hindi (हिंदी) language using Devanagari script. Use natural, compassionate Hindi expressions that feel warm and supportive.';
+        return '''
+IMPORTANT: You MUST respond ONLY in Hindi (हिंदी) language using Devanagari script. 
+- Do NOT use any English words in your response
+- Use natural, compassionate Hindi expressions
+- Write everything in Hindi including all advice, techniques, and encouragement
+- Example of proper Hindi response style: "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं..."
+''';
       case 'ગુજરાતી':
-        return 'Please respond in Gujarati (ગુજરાતી) language using Gujarati script. Use natural, compassionate Gujarati expressions that feel warm and supportive.';
+        return '''
+IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language using Gujarati script.
+- Do NOT use any English words in your response
+- Use natural, compassionate Gujarati expressions
+- Write everything in Gujarati including all advice, techniques, and encouragement
+- Example of proper Gujarati response style: "હું સમજી શકું છું કે તમે ચિંતિત અથવા ડરતા અનુભવો છો..."
+''';
       case 'English':
       default:
-        return 'Please respond in English language using clear, compassionate expressions that feel warm and supportive.';
+        return 'Please respond in clear, compassionate English language that feels warm and supportive.';
     }
   }
 
   /// Provide fallback advice when API fails
   String _getFallbackAdvice(String emotion, [String language = 'English']) {
+    if (language == 'हिंदी') {
+      return _getHindiFallbackAdvice(emotion);
+    } else if (language == 'ગુજરાતી') {
+      return _getGujaratiFallbackAdvice(emotion);
+    }
+
     switch (emotion.toLowerCase()) {
       case 'happy':
       case 'happiness':
@@ -190,6 +219,70 @@ Please provide your compassionate advice now:
     }
   }
 
+  /// Hindi fallback advice
+  String _getHindiFallbackAdvice(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'happy':
+      case 'happiness':
+        return "क्या अद्भुत क्षण है! 😊 आपकी यह खुशी बहुत कीमती है - इसे महसूस करने के लिए एक पल रुकें। इस खुशी को किसी अपने के साथ साझा करने पर विचार करें। याद रखें, आपके पास ऐसे और पल बनाने की शक्ति है।";
+
+      case 'sad':
+      case 'sadness':
+        return "मैं देख सकता हूं कि आप इस समय कठिन दौर से गुजर रहे हैं। 💙 उदास होना बिल्कुल सामान्य है - ये भावनाएं वैध हैं। कुछ गहरी सांसें लें, किसी विश्वसनीय मित्र से बात करें। यह भावना बीत जाएगी, और उज्जवल दिन आने वाले हैं।";
+
+      case 'angry':
+      case 'anger':
+        return "मैं समझ सकता हूं कि आप इस समय गुस्से में हैं। 🔥 कुछ गहरी सांसें लें और दस तक गिनती करें। टहलने जाने या कुछ शारीरिक व्यायाम करने पर विचार करें। याद रखें, गुस्सा होना ठीक है, लेकिन इसे कैसे व्यक्त करते हैं यह मायने रखता है।";
+
+      case 'fear':
+        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडिंग तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
+
+      case 'surprise':
+        return "लगता है कुछ अप्रत्याशित हुआ है! 😮 आश्चर्य भारी लग सकता है, लेकिन ये विकास के अवसर भी होते हैं। एक पल लेकर सोचें कि आप क्या महसूस कर रहे हैं। कभी-कभी सबसे अच्छी चीजें अप्रत्याशित बदलावों से आती हैं।";
+
+      case 'disgust':
+        return "मैं देख सकता हूं कि कुछ चीज आपको परेशान कर रही है। 😔 इन भावनाओं को स्वीकार करना और समझना महत्वपूर्ण है कि इन्हें क्या ट्रिगर करता है। यदि संभव हो तो स्थिति से खुद को दूर करें, कुछ शांत करने वाली तकनीकें अपनाएं।";
+
+      case 'neutral':
+        return "आप इस समय शांत, संतुलित अवस्था में लग रहे हैं। 😌 यह वास्तव में आत्मचिंतन और योजना बनाने का एक अद्भुत अवसर है। सोचें कि आप आज क्या महसूस करना या हासिल करना चाहते हैं।";
+
+      default:
+        return "आप इस समय जो भी महसूस कर रहे हैं वह वैध और महत्वपूर्ण है। 💙 अपनी भावनाओं को बिना किसी जजमेंट के स्वीकार करने के लिए एक पल लें। याद रखें कि भावनाएं अस्थायी आगंतुक हैं। आपमें इससे निपटने की शक्ति है।";
+    }
+  }
+
+  /// Gujarati fallback advice
+  String _getGujaratiFallbackAdvice(String emotion) {
+    switch (emotion.toLowerCase()) {
+      case 'happy':
+      case 'happiness':
+        return "કેટલો અદ્ભુત ક્ષણ છે! 😊 તમારી આ ખુશી ખૂબ કીમતી છે - આને અનુભવવા માટે એક ક્ષણ રોકાઓ. આ આનંદને કોઈ પ્રિયજન સાથે શેર કરવાનું વિચારો. યાદ રાખો, તમારી પાસે આવી વધુ ક્ષણો બનાવવાની શક્તિ છે.";
+
+      case 'sad':
+      case 'sadness':
+        return "હું જોઈ શકું છું કે તમે આ સમયે કઠિન દોરમાંથી પસાર થઈ રહ્યા છો. 💙 ઉદાસ થવું સાવ સામાન્ય છે - આ લાગણીઓ યોગ્ય છે. થોડી ઊંડી શ્વાસ લો, કોઈ વિશ્વસનીય મિત્ર સાથે વાત કરો. આ લાગણી પસાર થઈ જશે, અને ઉજળા દિવસો આવનારા છે.";
+
+      case 'angry':
+      case 'anger':
+        return "હું સમજી શકું છું કે તમે આ સમયે ગુસ્સામાં છો. 🔥 થોડી ઊંડી શ્વાસ લો અને દસ સુધી ગણતરી કરો. ફરવા જવાનું અથવા થોડી શારીરિક કસરત કરવાનું વિચારો. યાદ રાખો, ગુસ્સો થવો ઠીક છે, પરંતુ તેને કેવી રીતે વ્યક્ત કરો છો તે મહત્વનું છે.";
+
+      case 'fear':
+        return "હું સમજી શકું છું કે તમે ચિંતિત અથવા ડરતા અનુભવો છો. 🤗 યાદ રાખો કે તમે તમે વિચારો છો તેના કરતાં વધુ મજબૂત છો. ૫-૪-૩-૨-૧ ગ્રાઉન્ડિંગ ટેકનિક અજમાવો: ૫ વસ્તુઓ જે તમે જુઓ છો, ૪ જેને સ્પર્શ કરી શકો, ૩ જે સાંભળો, ૨ જેની સુગંધ લઈ શકો, અને ૧ જેનો સ્વાદ લઈ શકો. ધીમી, ઊંડી શ્વાસ લો.";
+
+      case 'surprise':
+        return "લાગે છે કંઈક અણધાર્યું થયું છે! 😮 આશ્ચર્ય ભારે લાગી શકે, પરંતુ તે વિકાસની તકો પણ હોય છે. એક ક્ષણ લઈને વિચારો કે તમે શું અનુભવો છો. કેટલીકવાર શ્રેષ્ઠ વસ્તુઓ અણધાર્યા ફેરફારોથી આવે છે.";
+
+      case 'disgust':
+        return "હું જોઈ શકું છું કે કંઈક વસ્તુ તમને પરેશાન કરી રહી છે. 😔 આ લાગણીઓને સ્વીકારવી અને સમજવી મહત્વપૂર્ણ છે કે તેમને શું ટ્રિગર કરે છે. જો શક્ય હોય તો સ્થિતિથી તમારી જાતને દૂર કરો, કેટલીક શાંત કરનારી તકનીકો અપનાવો.";
+
+      case 'neutral':
+        return "તમે આ સમયે શાંત, સંતુલિત અવસ્થામાં લાગો છો. 😌 આ ખરેખર આત્મચિંતન અને યોજના બનાવવાની અદ્ભુત તક છે. વિચારો કે તમે આજે શું અનુભવવા અથવા હાંસલ કરવા માંગો છો.";
+
+      default:
+        return "તમે આ સમયે જે પણ અનુભવો છો તે યોગ્ય અને મહત્વપૂર્ણ છે. 💙 તમારી લાગણીઓને કોઈ ન્યાય કર્યા વિના સ્વીકારવા માટે એક ક્ષણ લો. યાદ રાખો કે લાગણીઓ અસ્થાયી મુલાકાતીઓ છે. તમારામાં આનો સામનો કરવાની શક્તિ છે.";
+    }
+  }
+
   /// Get appropriate emoji for emotion
   String getEmotionEmoji(String emotion) {
     switch (emotion.toLowerCase()) {
@@ -215,7 +308,38 @@ Please provide your compassionate advice now:
     }
   }
 
+  /// Test API connection and model availability
+  Future<bool> testApiConnection() async {
+    try {
+      log('🧪 Testing Gemini API connection...');
+
+      if (!isConfigured) {
+        log('❌ API key not configured properly');
+        return false;
+      }
+
+      final testPrompt =
+          'Respond with "API_TEST_SUCCESS" if you can read this message.';
+      final content = [Content.text(testPrompt)];
+
+      final response = await _model.generateContent(content);
+
+      if (response.text != null && response.text!.isNotEmpty) {
+        log('✅ API test successful. Response: ${response.text}');
+        return true;
+      } else {
+        log('❌ API test failed: Empty response');
+        return false;
+      }
+    } catch (e) {
+      log('❌ API test failed with error: $e');
+      return false;
+    }
+  }
+
   /// Check if the service is properly configured
   bool get isConfigured =>
-      _apiKey != 'AIzaSyCo-W4OLgEIx0mKVIqdMmlsk7XydSTmDw4' && _apiKey.isNotEmpty;
+      _apiKey != 'AIzaSyCo-W4OLgEIx0mKVIqdMmlsk7XydSTmDw4' &&
+      _apiKey != 'YOUR_API_KEY_HERE' &&
+      _apiKey.isNotEmpty;
 }
