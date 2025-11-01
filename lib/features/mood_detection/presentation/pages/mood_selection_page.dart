@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/mood_detection_provider.dart';
 import '../widgets/mood_option_card.dart';
 import 'image_mood_detection_page.dart';
-import 'conversational_friend_page.dart';
+import 'audio_mood_detection_page.dart';
 import 'combined_mood_detection_page.dart';
 
 class MoodSelectionPage extends StatefulWidget {

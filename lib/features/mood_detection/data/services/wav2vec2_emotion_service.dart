@@ -1,9 +1,10 @@
 // lib/features/mood_detection/data/services/wav2vec2_emotion_service.dart
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math'; 
 import 'package:flutter/services.dart';
+import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:onnxruntime/onnxruntime.dart';
-import 'package:path_provider/path_provider.dart';
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -12,113 +13,119 @@ class Wav2Vec2EmotionService {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
+    try {
+      final modelData = await rootBundle.load('assets/models/wav2vec2_superb_er.onnx');
+      _session = OrtSession.fromBuffer(modelData.buffer.asUint8List(), OrtSessionOptions());
 
-    // Load the ONNX model
-    final modelData = await rootBundle.load('assets/models/wav2vec2_superb_er.onnx');
-    _session = OrtSession.fromBuffer(modelData.buffer.asUint8List(), OrtSessionOptions());
+      final labelsData = await rootBundle.loadString('assets/models/wav2vec2_labels.txt');
+      _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
 
-    // Load the labels
-    final labelsData = await rootBundle.loadString('assets/models/wav2vec2_labels.txt');
-    _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
-
-    _isInitialized = true;
-    print("Wav2Vec2EmotionService Initialized. Labels: $_labels");
+      _isInitialized = true;
+      print("Wav2Vec2EmotionService Initialized. Labels: $_labels");
+    } catch (e) {
+      print("Error initializing Wav2Vec2 service: $e");
+    }
   }
 
-  Future<String> analyzeAudio(File audioFile) async {
+  /// Analyzes a 16kHz PCM audio file and returns an EmotionResult.
+  Future<EmotionResult> analyzeAudio(File audioFile) async {
     if (!_isInitialized || _session == null || _labels == null) {
       await initialize();
     }
     
-    // --- IMPORTANT ---
-    // Wav2Vec2 models require audio at a 16kHz sample rate.
-    // The `record` package should be configured to record at 16kHz.
-    // If you are using an audio file, it MUST be resampled to 16kHz first.
-    // This example ASSUMES the File is a raw PCM Float32List at 16kHz.
-    // A real implementation would need to read the audio file (e.g., .wav or .m4a)
-    // and convert it. This is a non-trivial step.
-    
-    // For this example, let's assume the AudioProcessingService provides a
-    // correctly formatted raw audio file.
-    
+    // This is the fallback result
+    final fallbackResult = EmotionResult(
+      emotion: 'neutral',
+      confidence: 1.0,
+      allEmotions: {'neutral': 1.0},
+      timestamp: DateTime.now(),
+      processingTimeMs: 0,
+    );
+
+    if (_session == null || _labels == null) {
+      print("Wav2Vec2 service not initialized, returning fallback.");
+      return fallbackResult;
+    }
+
+    OrtValue? inputTensor;
+    OrtRunOptions? runOptions;
+    List<OrtValue?>? outputs;
+
     try {
       // 1. Read audio data
-      // This part is highly dependent on your audio format.
-      // Let's assume you've managed to get a Float32List of the raw waveform.
-      // This is a placeholder for actual audio processing.
-      // You will need a library to read the audio file and resample it.
-      // For now, this will fail unless the audioFile is raw PCM.
       final audioBytes = await audioFile.readAsBytes();
-      final audioFloats = audioBytes.buffer.asFloat32List(); // THIS IS LIKELY WRONG
       
-      // TODO: Replace above with proper audio loading/resampling to 16kHz Float32List
-
-      // 2. Prepare model input
-      // This is a simplification. Check your model's exact input specs.
-      // It likely expects [1, num_samples]
-      final shape = [1, audioFloats.length];
-      final inputTensor = OrtValueTensor.createTensor(audioFloats, shape);
-
-      // 3. Run inference
-      final inputs = {'input': inputTensor};
-      final runOptions = OrtRunOptions();
-      final outputs = await _session!.runAsync(inputs, runOptions);
-
-      // 4. Process output
-      final outputTensor = outputs[0]?.value as List<List<double>>?;
-      if (outputTensor == null) {
-        throw Exception("Model output is null");
+      final pcm16 = audioBytes.buffer.asInt16List();
+      final audioFloats = Float32List(pcm16.length);
+      for (int i = 0; i < pcm16.length; i++) {
+        audioFloats[i] = pcm16[i] / 32768.0;
       }
 
-      // Output is likely [1, num_labels]
+      if (audioFloats.isEmpty) {
+         print("Audio file is empty, returning fallback.");
+        return fallbackResult;
+      }
+
+      // 2. Prepare model input
+      final shape = [1, audioFloats.length];
+      // --- *** THIS IS THE FIX *** ---
+      // Use `OrtValueTensor.createTensorWithDataList` for onnxruntime: 1.4.1
+      inputTensor = OrtValueTensor.createTensorWithDataList(audioFloats, shape);
+
+      // 3. Run inference
+      final inputs = {'input': inputTensor}; // Key might be 'input_values'
+      runOptions = OrtRunOptions();
+      outputs = await _session!.runAsync(runOptions, inputs);
+
+      // 4. Process output
+      if (outputs == null || outputs.isEmpty || outputs[0] == null) {
+        throw Exception("Model output is null or empty");
+      }
+      
+      final outputTensor = outputs[0]!.value as List<List<double>>?;
+      if (outputTensor == null || outputTensor.isEmpty) {
+        throw Exception("Model output tensor is null or empty");
+      }
+      
       final scores = outputTensor[0];
+      final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
 
-      for (int i = 0; i < scores.length; i++) {
-        if (scores[i] > maxScore) {
-          maxScore = scores[i];
-          maxIndex = i;
+      // Apply softmax to get probabilities
+      final expScores = scores.map((s) => exp(s)).toList();
+      final sumExpScores = expScores.reduce((a, b) => a + b);
+      final probabilities = expScores.map((s) => s / sumExpScores).toList();
+
+      for (int i = 0; i < probabilities.length; i++) {
+        if (i < _labels!.length) {
+          allEmotions[_labels![i]] = probabilities[i];
+          if (probabilities[i] > maxScore) {
+            maxScore = probabilities[i];
+            maxIndex = i;
+          }
         }
       }
 
-      inputTensor.release();
-      runOptions.release();
-      outputs.forEach((o) => o?.release());
-
-      if (maxIndex != -1 && maxIndex < _labels!.length) {
-        return _labels![maxIndex];
+      if (maxIndex != -1) {
+        return EmotionResult(
+          emotion: _labels![maxIndex],
+          confidence: maxScore,
+          allEmotions: allEmotions,
+          timestamp: DateTime.now(),
+          processingTimeMs: 0, 
+        );
       } else {
-        return "neutral"; // Default fallback
+        return fallbackResult;
       }
     } catch (e) {
       print("Error during Wav2Vec2 inference: $e");
-      print("This likely failed because the audio file was not a raw Float32List at 16kHz.");
-      print("Please implement proper audio resampling.");
-      return "neutral"; // Fallback on error
+      return fallbackResult;
+    } finally {
+      // Release resources
+      inputTensor?.release();
+      runOptions?.release();
+      outputs?.forEach((o) => o?.release());
     }
   }
 }
-
-// ---
-// **Critical Note on `analyzeAudio`:**
-// The code above for reading the audio file is a placeholder. You CANNOT just read
-// the bytes of an `.m4a` or `.wav` file and treat it as a `Float32List`.
-// You must use a library to:
-// 1. Read the audio file (e.g., `audioplayers`, `just_audio`).
-// 2. Decode it to PCM data.
-// 3. Resample it to 16kHz (if it's not already).
-// 4. Convert it to `Float32List`.
-//
-// A simple way to bypass this for now is to configure your `record` package
-// to record directly at 16kHz.
-// In your `AudioProcessingService.startRecording`, configure the `Record` object:
-//
-// await _recorder.start(
-//   const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 16000),
-//   path: _filePath,
-// );
-//
-// If you do this, the file will be raw 16-bit PCM, which is closer. You'd
-// then read it as `Int16List` and convert to `Float32List` normalized between -1.0 and 1.0.
-// ---

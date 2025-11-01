@@ -1,17 +1,23 @@
+// lib/core/services/gemini_adviser_service.dart
 import 'dart:developer';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import '../config/app_config.dart';
+import '../config/app_config.dart'; // Import AppConfig to get the key
 
 class GeminiAdviserService {
-  static const String _apiKey = AppConfig.geminiApiKey;
+  // --- UPDATED: Load key from AppConfig ---
+  static final String _apiKey = AppConfig.geminiApiKey;
   late final GenerativeModel _model;
+  late final String _modelName; // Store the model name
 
   static final GeminiAdviserService _instance =
       GeminiAdviserService._internal();
   factory GeminiAdviserService() => _instance;
+  
   GeminiAdviserService._internal() {
+    // Using the model from your original file
+    _modelName = 'gemini-2.5-flash'; // Store the name
     _model = GenerativeModel(
-      model: 'gemini-2.5-flash',
+      model: _modelName, 
       apiKey: _apiKey,
       generationConfig: GenerationConfig(
         temperature: 0.7,
@@ -28,7 +34,81 @@ class GeminiAdviserService {
     );
   }
 
-  /// Get personalized emotional advice based on detected mood
+  // --- NEW METHOD for Audio "Friend" Feature ---
+  /// Get a conversational response based on user's speech and emotion.
+  Future<String> getConversationalAdvice({
+    required String userSpeech,
+    required String detectedEmotion,
+    String? userName,
+    String language = 'English', // Target language for the AI's response
+  }) async {
+    try {
+      log('🤖 Getting conversational advice for: "$userSpeech" (Emotion: $detectedEmotion) in $language');
+      
+      final prompt = _buildConversationalPrompt(
+        userSpeech: userSpeech,
+        emotion: detectedEmotion,
+        language: language,
+        userName: userName,
+      );
+
+      final content = [Content.text(prompt)];
+      final response = await _model.generateContent(content);
+
+      if (response.text != null && response.text!.isNotEmpty) {
+        return response.text!;
+      } else {
+        log('❌ Empty response from Gemini API for conversational advice');
+        throw Exception('Empty response from Gemini API');
+      }
+    } catch (e) {
+      log('❌ Error getting conversational advice: $e');
+      // Fallback to simpler advice if conversational prompt fails
+      return _getFallbackAdvice(detectedEmotion, language); // This line is now fixed
+    }
+  }
+
+  /// Build personalized prompt for the virtual friend
+  String _buildConversationalPrompt({
+    required String userSpeech,
+    required String emotion,
+    String language = 'English',
+    String? userName,
+  }) {
+    final languageInstruction = _getLanguageInstruction(language);
+    final userNameInfo = userName != null ? " The user's name is $userName." : "";
+
+    return '''
+    You are MindHeal AI, a compassionate, warm, and wise virtual best friend and counselor.
+    A user is talking to you. You have analyzed WHAT they said and HOW they said it (their emotional tone).$userNameInfo
+
+    **CRITICAL LANGUAGE REQUIREMENT:**
+    $languageInstruction
+
+    **Analysis of User's Input:**
+    - **What they said (Text):** "$userSpeech"
+    - **How they said it (Emotion):** ${emotion.toUpperCase()}
+
+    **Your Role & Guidelines:**
+    1.  **Act as a supportive friend, NOT a robot.** Be warm, empathetic, and conversational. Use "you".
+    2.  **Acknowledge BOTH text and emotion.** This is crucial.
+    3.  **If Text and Emotion conflict** (e.g., Text: "I'm fine", Emotion: "SAD"), gently explore it.
+        (e.g., "You say you're fine, but I'm sensing some sadness in your voice. It's okay to not be okay. What's on your mind?")
+    4.  **If Text and Emotion match** (e.g., Text: "I'm so tired of this", Emotion: "SAD"), validate their feelings.
+        (e.g., "I hear that. It sounds like you're feeling completely exhausted and sad, and that's a really tough place to be.")
+    5.  **Handle distressing text (like "I an tired of this life i don't want this life") with extreme care:**
+        -   Validate their pain immediately (e.g., "I hear how much pain you're in. That sounds incredibly heavy and difficult.").
+        -   Offer gentle, hopeful perspective (e.g., "Please hold on. That feeling, as overwhelming as it is, can pass. Life is very beautiful, and there is strength in you, even when it's hard to see. God is with you. Let's focus just on this moment.").
+    6.  **Handle positive text/emotion** (e.g., "I think I am good today"):
+        -   Encourage them! (e.g., "That's wonderful to hear! And why just 'think' you are good? Be actual good! Live your life, enjoy it! What's making today feel good?")
+    7.  **Keep responses to 2-4 supportive sentences.**
+    
+    Please provide your compassionate, friendly response now:
+    ''';
+  }
+
+  // --- ORIGINAL METHOD for Image Detection ---
+  /// Get personalized emotional advice based on detected mood (for images/camera)
   Future<String> getEmotionalAdvice({
     required String detectedEmotion,
     required double confidence,
@@ -37,7 +117,7 @@ class GeminiAdviserService {
   }) async {
     try {
       log('🤖 Getting emotional advice for: $detectedEmotion with confidence: ${(confidence * 100).toInt()}% in $language');
-      log('🔑 API Key configured: ${_apiKey.isNotEmpty && _apiKey != "YOUR_API_KEY_HERE"}');
+      log('🔑 API Key configured: ${isConfigured}');
 
       final prompt = _buildAdvicePrompt(
         emotion: detectedEmotion,
@@ -51,7 +131,7 @@ class GeminiAdviserService {
 
       final content = [Content.text(prompt)];
 
-      log('🌐 Calling Gemini API with model: gemini-2.0-flash-exp');
+      log('🌐 Calling Gemini API with model: $_modelName');
       final response = await _model.generateContent(content);
 
       log('📨 Received response from Gemini API');
@@ -61,13 +141,13 @@ class GeminiAdviserService {
         log('✅ First 100 chars: ${response.text!.substring(0, response.text!.length > 100 ? 100 : response.text!.length)}...');
         return response.text!;
       } else {
-        log('❌ Empty response from Gemini API');
+        log('❌ Empty response from Gemini API for emotional advice');
         throw Exception('Empty response from Gemini API');
       }
     } catch (e) {
       log('❌ Error getting emotional advice: $e');
       log('🔄 Using fallback advice for $detectedEmotion in $language');
-      return _getFallbackAdvice(detectedEmotion, language);
+      return _getFallbackAdvice(detectedEmotion, language); // This line is also now fixed
     }
   }
 
@@ -114,6 +194,8 @@ ${_getEmotionSpecificGuidance(emotion)}
 Please provide your compassionate advice now:
 ''';
   }
+
+  // --- *** ALL HELPER METHODS ARE NOW INCLUDED *** ---
 
   /// Get emotion-specific guidance for the prompt
   String _getEmotionSpecificGuidance(String emotion) {
@@ -235,10 +317,10 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
         return "मैं समझ सकता हूं कि आप इस समय गुस्से में हैं। 🔥 कुछ गहरी सांसें लें और दस तक गिनती करें। टहलने जाने या कुछ शारीरिक व्यायाम करने पर विचार करें। याद रखें, गुस्सा होना ठीक है, लेकिन इसे कैसे व्यक्त करते हैं यह मायने रखता है।";
 
       case 'fear':
-        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडिंग तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
+        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडING तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
 
       case 'surprise':
-        return "लगता है कुछ अप्रत्याशित हुआ है! 😮 आश्चर्य भारी लग सकता है, लेकिन ये विकास के अवसर भी होते हैं। एक पल लेकर सोचें कि आप क्या महसूस कर रहे हैं। कभी-कभी सबसे अच्छी चीजें अप्रत्याशित बदलावों से आती हैं।";
+        return "लगता है कुछ अप्रत्याशિત हुआ है! 😮 आश्चर्य भारी लग सकता है, लेकिन ये विकास के अवसर भी होते हैं। एक पल लेकर सोचें कि आप क्या महसूस कर रहे हैं। कभी-कभी सबसे अच्छी चीजें अप्रत्याशित बदलावों से आती हैं।";
 
       case 'disgust':
         return "मैं देख सकता हूं कि कुछ चीज आपको परेशान कर रही है। 😔 इन भावनाओं को स्वीकार करना और समझना महत्वपूर्ण है कि इन्हें क्या ट्रिगर करता है। यदि संभव हो तो स्थिति से खुद को दूर करें, कुछ शांत करने वाली तकनीकें अपनाएं।";
@@ -314,7 +396,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
       log('🧪 Testing Gemini API connection...');
 
       if (!isConfigured) {
-        log('❌ API key not configured properly');
+        log('❌ API key not configured properly via AppConfig/dotenv');
         return false;
       }
 
@@ -324,11 +406,11 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
 
       final response = await _model.generateContent(content);
 
-      if (response.text != null && response.text!.isNotEmpty) {
+      if (response.text != null && response.text!.contains("API_TEST_SUCCESS")) {
         log('✅ API test successful. Response: ${response.text}');
         return true;
       } else {
-        log('❌ API test failed: Empty response');
+        log('❌ API test failed: Unexpected response: ${response.text}');
         return false;
       }
     } catch (e) {
@@ -339,7 +421,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
 
   /// Check if the service is properly configured
   bool get isConfigured =>
-      _apiKey != 'AIzaSyCo-W4OLgEIx0mKVIqdMmlsk7XydSTmDw4' &&
-      _apiKey != 'YOUR_API_KEY_HERE' &&
-      _apiKey.isNotEmpty;
+      _apiKey.isNotEmpty &&
+      !_apiKey.contains('YOUR_API_KEY') &&
+      !_apiKey.contains('MISSING_GEMINI_KEY');
 }

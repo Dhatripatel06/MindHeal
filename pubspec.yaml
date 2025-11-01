@@ -52,7 +52,11 @@ dependencies:
   
   # Audio & Media
   just_audio: ^0.10.4
-  
+
+  # Audio & Sensors
+  http: ^1.2.1
+  mime: ^1.0.5
+  flutter_dotenv: ^5.1.0
   
   # Sensors & Health
   sensors_plus: ^7.0.0
@@ -131,6 +135,7 @@ flutter:
     - assets/models/labels.txt
     - assets/models/enet_b0_8_best_afew.onnx
     - assets/animations/
+    - .env
 
 
 

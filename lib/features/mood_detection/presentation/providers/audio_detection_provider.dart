@@ -1,168 +1,253 @@
-// lib/features/mood_detection/presentation/providers/conversational_friend_provider.dart
+// lib/features/mood_detection/presentation/providers/audio_detection_provider.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/core/services/speech_to_text_service.dart';
+import 'package:mental_wellness_app/core/services/speech_transcription_service.dart';
 import 'package:mental_wellness_app/core/services/translation_service.dart';
 import 'package:mental_wellness_app/core/services/tts_service.dart';
+import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/wav2vec2_emotion_service.dart';
 
-// A simple model for a chat message
-class ChatMessage {
-  final String text;
-  final bool isUser;
-  ChatMessage({required this.text, required this.isUser});
-}
-
-class ConversationalFriendProvider extends ChangeNotifier {
+class AudioDetectionProvider extends ChangeNotifier {
   // --- All Services ---
   final AudioProcessingService _audioService = AudioProcessingService();
-  final SpeechToTextService _sttService = SpeechToTextService();
-  final TranslationService _translationService = TranslationService();
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService();
+  final SpeechTranscriptionService _sttService = SpeechTranscriptionService();
+  final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
   final TtsService _ttsService = TtsService();
 
-  // --- State ---
+  // --- State for UI ---
   bool _isInitialized = false;
-  bool _isListening = false;
+  bool _isRecording = false;
   bool _isProcessing = false;
-  String _selectedLanguage = 'English'; // 'English', 'हिंदी', 'ગુજરાતી'
-  List<ChatMessage> _messages = [];
+  bool _isVoiceDetected = false; // Note: This is hard to detect accurately
+  bool _hasRecording = false;
+  EmotionResult? _lastResult;
+  String? _friendlyResponse;
+  String? _lastError;
+  List<double> _audioData = [];
+  Duration _recordingDuration = Duration.zero;
+  StreamSubscription? _durationSubscription;
+  StreamSubscription? _audioDataSubscription;
 
-  // --- Getters ---
-  bool get isListening => _isListening;
+
+  // --- State for New Feature ---
+  String _selectedLanguage = 'English'; // 'English', 'हिंदी', 'ગુજરાતી'
+
+  // --- Getters for UI ---
+  bool get isRecording => _isRecording;
   bool get isProcessing => _isProcessing;
+  bool get isVoiceDetected => _isVoiceDetected; // Placeholder
+  bool get hasRecording => _hasRecording;
+  EmotionResult? get lastResult => _lastResult;
+  String? get friendlyResponse => _friendlyResponse;
+  String? get lastError => _lastError;
+  List<double> get audioData => _audioData;
+  Duration get recordingDuration => _recordingDuration;
   String get selectedLanguage => _selectedLanguage;
-  List<ChatMessage> get messages => _messages;
 
   // --- Language Mapping ---
-  String get _currentLocaleId {
+  /// Gets the ISO 639-1 code for Whisper and Translator
+  String get currentLangCode {
     switch (_selectedLanguage) {
-      case 'हिंदी':
-        return 'hi-IN';
-      case 'ગુજરાતી':
-        return 'gu-IN';
-      default:
-        return 'en-US';
+      case 'हिंदी': return 'hi';
+      case 'ગુજરાતી': return 'gu';
+      default: return 'en';
+    }
+  }
+  
+  /// Gets the BCP 47 code for Flutter TTS
+  String get currentLocaleId {
+    switch (_selectedLanguage) {
+      case 'हिंदी': return 'hi-IN';
+      case 'ગુજરાતી': return 'gu-IN';
+      default: return 'en-US';
     }
   }
 
-  String get _currentLangCode {
-    switch (_selectedLanguage) {
-      case 'हिंदी':
-        return 'hi';
-      case 'ગુજરાતી':
-        return 'gu';
-      default:
-        return 'en';
-    }
-  }
-
-  ConversationalFriendProvider() {
-    _initialize();
-  }
-
-  Future<void> _initialize() async {
-    await _sttService.initialize();
+  // --- Initialization ---
+  Future<void> initialize() async {
+    if (_isInitialized) return;
     await _emotionService.initialize();
-    _ttsService.onStateChanged = (state) {
-      if (state == TtsState.stopped) {
-        _isProcessing = false;
-        notifyListeners();
-      }
-    };
+    
+    // Cancel previous subscriptions if they exist
+    _audioDataSubscription?.cancel();
+    _durationSubscription?.cancel();
+    
+    _audioDataSubscription = _audioService.audioDataStream.listen((data) {
+      _audioData = data;
+      notifyListeners();
+    });
+    _durationSubscription = _audioService.recordingDurationStream.listen((duration) {
+      _recordingDuration = duration;
+      notifyListeners();
+    });
     _isInitialized = true;
-    _addMessage("Hello! Tap the microphone and let's talk.", isUser: false);
+    print("AudioDetectionProvider Initialized");
   }
 
-  void _addMessage(String text, {required bool isUser}) {
-    _messages.insert(0, ChatMessage(text: text, isUser: isUser));
-    notifyListeners();
-  }
-
+  // --- Language Selection ---
   void setLanguage(String language) {
     _selectedLanguage = language;
     notifyListeners();
   }
 
-  // --- Main Control Function ---
-  Future<void> toggleListening() async {
-    if (!_isInitialized) return;
-
-    if (_isListening) {
-      // --- STOP LISTENING ---
-      _isListening = false;
-      notifyListeners();
-      
-      await _sttService.stopListening();
-      final audioFile = await _audioService.stopRecording(); // This gives us the audio
-      final userText = _sttService.lastWords;
-
-      if (userText.isEmpty || audioFile == null) {
-        _isProcessing = false;
-        notifyListeners();
-        return;
-      }
-      
-      // Add user's message to UI
-      _addMessage(userText, isUser: true);
-      
-      // Start processing pipeline
-      _isProcessing = true;
-      notifyListeners();
-      await _processUserTurn(userText, audioFile);
-
-    } else {
-      // --- START LISTENING ---
-      await _audioService.startRecording(
-        // CRITICAL: Record at 16kHz for Wav2Vec2
-        sampleRate: 16000,
-        encoder: AudioEncoder.pcm16bits, // Use PCM for raw data
-      );
-      await _sttService.startListening(_currentLocaleId);
-      _isListening = true;
+  // --- UI Control Methods ---
+  Future<void> startRecording() async {
+    if (_isRecording) return;
+    clearResults();
+    clearRecording();
+    _isRecording = true;
+    _isProcessing = false;
+    _lastError = null;
+    notifyListeners();
+    try {
+      await _audioService.startRecording();
+    } catch (e) {
+      _lastError = e.toString();
+      _isRecording = false;
       notifyListeners();
     }
   }
 
-  Future<void> _processUserTurn(String userText, File audioFile) async {
+  Future<void> stopRecording() async {
+    if (!_isRecording) return;
+    _isRecording = false;
+    _isProcessing = true; // Now we process
+    _lastError = null;
+    _recordingDuration = Duration.zero; // Reset duration
+    notifyListeners();
+
     try {
-      // 1. Translate user text to English (if needed)
-      String englishText = userText;
-      if (_currentLangCode != 'en') {
-        englishText = await _translationService.translate(userText, from: _currentLangCode, to: 'en');
+      final audioFile = await _audioService.stopRecording();
+      if (audioFile != null) {
+        _hasRecording = true;
+        await _runAnalysisPipeline(audioFile); // Run the new pipeline
+      } else {
+        throw Exception("Failed to save recording.");
       }
-
-      // 2. Analyze emotion from audio
-      // This service needs the raw 16kHz PCM file
-      String emotion = await _emotionService.analyzeAudio(audioFile);
-
-      // 3. Get Gemini response in English
-      String englishResponse = await _geminiService.getConversationalAdvice(
-        userSpeech: englishText,
-        detectedEmotion: emotion,
-        language: 'English', // Always ask Gemini for English
-      );
-
-      // 4. Translate response back to user's language (if needed)
-      String finalResponse = englishResponse;
-      if (_currentLangCode != 'en') {
-        finalResponse = await _translationService.translate(englishResponse, from: 'en', to: _currentLangCode);
-      }
-      
-      // 5. Add AI message and speak it
-      _addMessage(finalResponse, isUser: false);
-      await _ttsService.speak(finalResponse, _currentLocaleId);
-      
-      // Note: _isProcessing is set to false by the TTS completion handler
-
     } catch (e) {
-      print("Error in processing turn: $e");
-      _addMessage("I'm sorry, I had a little trouble understanding. Could you try again?", isUser: false);
+      _lastError = "Error stopping/processing: $e";
+      print(_lastError);
+    } finally {
       _isProcessing = false;
       notifyListeners();
     }
+  }
+
+  Future<void> analyzeAudioFile(File audioFile) async {
+    clearResults();
+    clearRecording();
+    _isRecording = false;
+    _isProcessing = true;
+    _hasRecording = true; // We have a file
+    _lastError = null;
+    notifyListeners();
+
+    try {
+      // TODO: We need to get audio data for the waveform.
+      // This is complex and requires reading/downsampling the file.
+      // For now, we'll just show an empty waveform.
+      _audioData = [];
+      
+      await _runAnalysisPipeline(audioFile); // Run the new pipeline
+    } catch (e) {
+      _lastError = "Error analyzing file: $e";
+      print(_lastError);
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> playLastRecording() async {
+    try {
+      await _audioService.playLastRecording();
+    } catch (e) {
+      _lastError = e.toString();
+      notifyListeners();
+    }
+  }
+
+  void clearRecording() {
+    _audioService.clearRecording();
+    _hasRecording = false;
+    _audioData = [];
+    _recordingDuration = Duration.zero;
+    clearResults();
+  }
+
+  void clearResults() {
+    _lastResult = null;
+    _friendlyResponse = null;
+    _lastError = null;
+    notifyListeners();
+  }
+
+  // --- *** THE NEW ANALYSIS PIPELINE *** ---
+  Future<void> _runAnalysisPipeline(File audioFile) async {
+    try {
+      // 1. Analyze Emotion from Audio (using new ONNX model)
+      // This happens first and gives us the EmotionResult for the UI bars
+      _lastResult = await _emotionService.analyzeAudio(audioFile);
+      notifyListeners(); // Show emotion bars immediately
+
+      final detectedEmotion = _lastResult?.emotion ?? 'neutral';
+
+      // 2. Transcribe Audio to Text (STT)
+      String userText = await _sttService.transcribeAudio(audioFile, currentLangCode);
+      if (userText.isEmpty) {
+        userText = "(User said nothing but felt $detectedEmotion)";
+      }
+
+      // 3. Translate Text to English (if needed)
+      String englishText = await _translationService.translate(
+        userText,
+        from: currentLangCode,
+        to: 'en',
+      );
+
+      // 4. Get Gemini "Friend" Response
+      // We ask Gemini for the response in English to ensure quality
+      String englishResponse = await _geminiService.getConversationalAdvice(
+        userSpeech: englishText,
+        detectedEmotion: detectedEmotion,
+        language: 'English', // Always get English response from AI
+      );
+
+      // 5. Translate Response back to User's Language
+      String finalResponse = await _translationService.translate(
+        englishResponse,
+        from: 'en',
+        to: currentLangCode, // Translate to selected language
+      );
+
+      // 6. Set friendly response for UI and speak it
+      _friendlyResponse = finalResponse;
+      notifyListeners();
+      await _ttsService.speak(finalResponse, currentLocaleId);
+
+    } catch (e) {
+      print("Error in analysis pipeline: $e");
+      _lastError = "Error in analysis: $e";
+      // Provide a fallback response
+      _friendlyResponse = _geminiService.getFallbackAdvice(
+        _lastResult?.emotion ?? 'neutral',
+        _selectedLanguage,
+      );
+      notifyListeners();
+    }
+  }
+  
+  @override
+  void dispose() {
+    _audioService.dispose();
+    _ttsService.dispose();
+    _durationSubscription?.cancel();
+    _audioDataSubscription?.cancel();
+    super.dispose();
   }
 }
