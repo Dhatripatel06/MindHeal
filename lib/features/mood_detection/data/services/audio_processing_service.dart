@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:onnxruntime/onnxruntime.dart';
+import 'package:translator/translator.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 import '../models/emotion_result.dart';
 
 class AudioProcessingService {
@@ -8,29 +14,28 @@ class AudioProcessingService {
   factory AudioProcessingService() => _instance;
   AudioProcessingService._internal();
 
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  final translator = GoogleTranslator();
+  late final GenerativeModel _generativeModel;
+
   final StreamController<List<double>> _audioDataController = StreamController<List<double>>.broadcast();
   bool _isRecording = false;
   String? _recordingPath;
-  Timer? _dataTimer;
 
   Stream<List<double>> get audioDataStream => _audioDataController.stream;
 
+  Future<void> initialize(String apiKey) async {
+    _generativeModel = GenerativeModel(model: 'gemini-pro', apiKey: apiKey);
+  }
+
   Future<void> startRecording() async {
     try {
-      // TODO: Initialize actual audio recording
-      // Use record package or similar for actual implementation
+      final directory = await getApplicationDocumentsDirectory();
+      _recordingPath = '${directory.path}/recording_${DateTime.now().millisecondsSinceEpoch}.wav';
       
+      await _audioRecorder.start(const RecordConfig(), path: _recordingPath!);
       _isRecording = true;
-      _recordingPath = '/tmp/recording_${DateTime.now().millisecondsSinceEpoch}.wav';
-      
-      // Simulate audio data stream
-      _dataTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-        if (_isRecording) {
-          final audioData = _generateSimulatedAudioData();
-          _audioDataController.add(audioData);
-        }
-      });
-      
+
     } catch (e) {
       print('Error starting recording: $e');
     }
@@ -38,11 +43,8 @@ class AudioProcessingService {
 
   Future<void> stopRecording() async {
     try {
+      await _audioRecorder.stop();
       _isRecording = false;
-      _dataTimer?.cancel();
-      
-      // TODO: Stop actual audio recording
-      
     } catch (e) {
       print('Error stopping recording: $e');
     }
@@ -52,30 +54,54 @@ class AudioProcessingService {
     if (_recordingPath == null) {
       throw Exception('No recording available');
     }
+    return _analyzeAudioFile(File(_recordingPath!));
+  }
 
+  Future<EmotionResult> analyzeAudioFile(File audioFile) async {
+    return _analyzeAudioFile(audioFile);
+  }
+
+  Future<EmotionResult> _analyzeAudioFile(File audioFile) async {
     try {
-      // TODO: Implement actual audio emotion analysis
-      // This would involve:
-      // 1. Loading the audio file
-      // 2. Extracting features (MFCC, spectral features, etc.)
-      // 3. Running through emotion classification model
+      final audioBytes = await audioFile.readAsBytes();
+      final session = await OrtEnv.instance.createSessionFromAsset('assets/models/wav2vec2_superb_er.onnx');
       
-      return _getDemoAudioResult();
+      final inputTensor = OrtValue.fromTensor(audioBytes, [1, audioBytes.length]);
+      final inputs = {'input': inputTensor};
+      
+      final outputs = await session.run(inputs);
+      final outputTensor = outputs['output'] as OrtValue;
+      
+      final emotions = _processOutput(outputTensor);
+
+      return EmotionResult(
+        emotion: emotions.entries.first.key,
+        confidence: emotions.entries.first.value,
+        allEmotions: emotions,
+        timestamp: DateTime.now(),
+        processingTimeMs: 0,
+      );
     } catch (e) {
-      print('Error analyzing recording: $e');
+      print('Error analyzing audio file: $e');
       return _getDemoAudioResult();
     }
   }
 
-  Future<EmotionResult> analyzeAudioFile(File audioFile) async {
+  Map<String, double> _processOutput(OrtValue outputTensor) {
+    // Implement logic to process the output tensor and return a map of emotions and their confidences
+    return {'happy': 0.8, 'sad': 0.1, 'neutral': 0.1};
+  }
+
+  Future<String> getFriendlyResponse(String userInput, String emotion) async {
     try {
-      // TODO: Implement audio file analysis
-      // Similar to analyzeLastRecording but with external file
-      
-      return _getDemoAudioResult();
+      final translatedInput = await translator.translate(userInput, to: 'en');
+      final prompt = 'User said: "$translatedInput". Their emotion is $emotion. Respond as a friendly and supportive best friend.';
+      final response = await _generativeModel.generateContent([Content.text(prompt)]);
+      final translatedResponse = await translator.translate(response.text!, from: 'en', to: 'hi');
+      return translatedResponse.text;
     } catch (e) {
-      print('Error analyzing audio file: $e');
-      return _getDemoAudioResult();
+      print('Error getting friendly response: $e');
+      return "I'm here for you.";
     }
   }
 
@@ -83,19 +109,7 @@ class AudioProcessingService {
     if (_recordingPath == null) {
       throw Exception('No recording available');
     }
-
-    try {
-      // TODO: Implement audio playback
-      // Use just_audio or similar package
-      
-    } catch (e) {
-      print('Error playing recording: $e');
-    }
-  }
-
-  List<double> _generateSimulatedAudioData() {
-    final random = Random();
-    return List.generate(64, (index) => (random.nextDouble() - 0.5) * 2);
+    // Implement audio playback
   }
 
   EmotionResult _getDemoAudioResult() {
@@ -117,12 +131,12 @@ class AudioProcessingService {
       confidence: emotionMap[emotions[dominantIndex]]!,
       allEmotions: emotionMap,
       timestamp: DateTime.now(),
-      processingTimeMs: 0, // Audio processing doesn't track time
+      processingTimeMs: 0,
     );
   }
 
   void dispose() {
-    _dataTimer?.cancel();
+    _audioRecorder.dispose();
     _audioDataController.close();
   }
 }

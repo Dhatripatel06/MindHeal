@@ -20,6 +20,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   late AnimationController _waveController;
+  final TextEditingController _textController = TextEditingController();
 
   @override
   void initState() {
@@ -37,12 +38,16 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       duration: const Duration(milliseconds: 100),
       vsync: this,
     );
+
+    final provider = context.read<AudioDetectionProvider>();
+    provider.initialize('YOUR_GEMINI_API_KEY');
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _waveController.dispose();
+    _textController.dispose();
     super.dispose();
   }
 
@@ -72,96 +77,143 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         builder: (context, provider, child) {
           return Column(
             children: [
-              // Waveform Visualization Area
               Expanded(
-                flex: 2,
-                child: Container(
-                  margin: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.teal.withOpacity(0.1),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
+                child: ListView(
+                  children: [
+                    // Waveform Visualization Area
+                    Container(
+                      height: 200,
+                      margin: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.teal.withOpacity(0.1),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Stack(
-                      children: [
-                        // Waveform Visualizer
-                        WaveformVisualizer(
-                          audioData: provider.audioData,
-                          isRecording: provider.isRecording,
-                          color: Colors.teal,
-                        ),
-                        
-                        // Voice Activity Indicator
-                        if (provider.isRecording)
-                          Positioned(
-                            top: 20,
-                            right: 20,
-                            child: _buildVoiceActivityIndicator(provider),
-                          ),
-                        
-                        // Recording Timer
-                        if (provider.isRecording)
-                          Positioned(
-                            top: 20,
-                            left: 20,
-                            child: _buildRecordingTimer(provider),
-                          ),
-                        
-                        // Center Message
-                        if (!provider.isRecording && provider.audioData.isEmpty)
-                          const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.mic,
-                                  size: 64,
-                                  color: Colors.grey,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Tap the microphone to start recording',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Stack(
+                          children: [
+                            WaveformVisualizer(
+                              audioData: provider.audioData,
+                              isRecording: provider.isRecording,
+                              color: Colors.teal,
                             ),
-                          ),
-                      ],
+                            if (provider.isRecording)
+                              Positioned(
+                                top: 20,
+                                right: 20,
+                                child: _buildVoiceActivityIndicator(provider),
+                              ),
+                            if (provider.isRecording)
+                              Positioned(
+                                top: 20,
+                                left: 20,
+                                child: _buildRecordingTimer(provider),
+                              ),
+                            if (!provider.isRecording && provider.audioData.isEmpty)
+                              const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.mic,
+                                      size: 64,
+                                      color: Colors.grey,
+                                    ),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Tap the microphone to start recording',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    
+                    // User Input
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: _textController,
+                        decoration: const InputDecoration(
+                          labelText: 'What\'s on your mind?',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    
+                    // Results Section
+                    if (provider.lastResult != null)
+                      Container(
+                        margin: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.teal.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _buildResultsSection(provider),
+                      ),
+                      
+                    // Friendly Response
+                    if (provider.friendlyResponse != null)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Your friend says:',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              provider.friendlyResponse!,
+                              style: const TextStyle(
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              
-              // Results Section
-              if (provider.lastResult != null)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.teal.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: _buildResultsSection(provider),
-                ),
               
               // Control Section
               Container(
@@ -272,7 +324,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         ),
         const SizedBox(height: 16),
         
-        // Dominant Emotion
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -318,7 +369,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 16),
         
-        // All Emotions
         Text(
           'Emotion Breakdown',
           style: TextStyle(
@@ -342,7 +392,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 16),
         
-        // Action Buttons
         Row(
           children: [
             Expanded(
@@ -377,7 +426,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   Widget _buildControlSection(AudioDetectionProvider provider) {
     return Column(
       children: [
-        // Main Recording Button
         AnimatedBuilder(
           animation: _pulseController,
           builder: (context, child) {
@@ -424,7 +472,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 24),
         
-        // Secondary Controls
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -500,8 +547,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     try {
       final provider = context.read<AudioDetectionProvider>();
       await provider.stopRecording();
-      // Automatically analyze the recording
-      await provider.analyzeLastRecording();
+      await provider.analyzeLastRecording(_textController.text);
     } catch (e) {
       _showError('Failed to stop recording: $e');
     }
@@ -516,7 +562,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
 
       if (result != null && result.files.single.path != null) {
         final provider = context.read<AudioDetectionProvider>();
-        await provider.analyzeAudioFile(File(result.files.single.path!));
+        await provider.analyzeAudioFile(File(result.files.single.path!), _textController.text);
       }
     } catch (e) {
       _showError('Failed to pick audio file: $e');

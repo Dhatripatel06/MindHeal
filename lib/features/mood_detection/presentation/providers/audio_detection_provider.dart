@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '/features/mood_detection/data/models/emotion_result.dart';
-import '/features/mood_detection/data/services/audio_processing_service.dart';
+import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
+import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart';
 
 class AudioDetectionProvider extends ChangeNotifier {
   final AudioProcessingService _audioService = AudioProcessingService();
@@ -13,6 +13,7 @@ class AudioDetectionProvider extends ChangeNotifier {
   List<double> _audioData = [];
   Duration _recordingDuration = Duration.zero;
   EmotionResult? _lastResult;
+  String? _friendlyResponse;
 
   // Getters
   bool get isRecording => _isRecording;
@@ -22,6 +23,11 @@ class AudioDetectionProvider extends ChangeNotifier {
   List<double> get audioData => _audioData;
   Duration get recordingDuration => _recordingDuration;
   EmotionResult? get lastResult => _lastResult;
+  String? get friendlyResponse => _friendlyResponse;
+
+  Future<void> initialize(String apiKey) async {
+    await _audioService.initialize(apiKey);
+  }
 
   Future<void> startRecording() async {
     try {
@@ -30,7 +36,6 @@ class AudioDetectionProvider extends ChangeNotifier {
       _hasRecording = false;
       _recordingDuration = Duration.zero;
       
-      // Start listening to audio data stream
       _audioService.audioDataStream.listen((data) {
         _audioData = data;
         _isVoiceDetected = data.any((sample) => sample.abs() > 0.1);
@@ -54,7 +59,7 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> analyzeLastRecording() async {
+  Future<void> analyzeLastRecording(String userInput) async {
     if (!_hasRecording) return;
 
     _isAnalyzing = true;
@@ -63,6 +68,7 @@ class AudioDetectionProvider extends ChangeNotifier {
     try {
       final result = await _audioService.analyzeLastRecording();
       _lastResult = result;
+      _friendlyResponse = await _audioService.getFriendlyResponse(userInput, result.emotion);
     } catch (e) {
       debugPrint('Error analyzing recording: $e');
     } finally {
@@ -71,13 +77,14 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> analyzeAudioFile(File audioFile) async {
+  Future<void> analyzeAudioFile(File audioFile, String userInput) async {
     _isAnalyzing = true;
     notifyListeners();
 
     try {
       final result = await _audioService.analyzeAudioFile(audioFile);
       _lastResult = result;
+      _friendlyResponse = await _audioService.getFriendlyResponse(userInput, result.emotion);
     } catch (e) {
       debugPrint('Error analyzing audio file: $e');
     } finally {
@@ -98,11 +105,13 @@ class AudioDetectionProvider extends ChangeNotifier {
     _audioData = [];
     _hasRecording = false;
     _lastResult = null;
+    _friendlyResponse = null;
     notifyListeners();
   }
 
   void clearResults() {
     _lastResult = null;
+    _friendlyResponse = null;
     notifyListeners();
   }
 }
