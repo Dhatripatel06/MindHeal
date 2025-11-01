@@ -21,8 +21,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  late AnimationController _waveController;
-  
+
   // To get the locale for the TTS playback button
   final TtsService _ttsService = TtsService();
 
@@ -33,27 +32,25 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _waveController = AnimationController(
-      duration: const Duration(milliseconds: 100),
-      vsync: this,
     );
 
     // Initialize the provider
     // We can't use context.read in initState, so we do it post-frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AudioDetectionProvider>().initialize();
+      // Ensure provider is initialized only once
+      final provider = context.read<AudioDetectionProvider>();
+      if (!provider.isInitialized) {
+        provider.initialize();
+      }
     });
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _waveController.dispose();
     _ttsService.dispose(); // Dispose the TTS service
     super.dispose();
   }
@@ -140,7 +137,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                               isRecording: provider.isRecording,
                               color: Colors.teal,
                             ),
-                            
+
                             // Voice Activity Indicator
                             if (provider.isRecording)
                               Positioned(
@@ -148,7 +145,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                 right: 20,
                                 child: _buildVoiceActivityIndicator(provider),
                               ),
-                            
+
                             // Recording Timer
                             if (provider.isRecording)
                               Positioned(
@@ -156,9 +153,11 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                 left: 20,
                                 child: _buildRecordingTimer(provider),
                               ),
-                            
+
                             // Center Message
-                            if (!provider.isRecording && provider.audioData.isEmpty && !provider.hasRecording)
+                            if (!provider.isRecording &&
+                                provider.audioData.isEmpty &&
+                                !provider.hasRecording)
                               const Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -184,28 +183,31 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                         ),
                       ),
                     ),
-                    
+
                     // Error Message
                     if (provider.lastError != null)
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                           color: Colors.red.withOpacity(0.1),
-                           borderRadius: BorderRadius.circular(8),
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           "Error: ${provider.lastError}",
-                          style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                              color: Colors.red[700],
+                              fontWeight: FontWeight.w500),
                         ),
                       ),
 
                     // Results Section
                     if (provider.lastResult != null)
                       Container(
-                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8), 
+                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                         padding: const EdgeInsets.all(20),
-                         decoration: BoxDecoration(
+                        decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(15),
                           boxShadow: [
@@ -218,9 +220,10 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                         ),
                         child: _buildResultsSection(provider),
                       ),
-                      
+
                     // Friendly Response
-                    if (provider.isProcessing && provider.friendlyResponse == null)
+                    if (provider.isProcessing &&
+                        provider.friendlyResponse == null)
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.all(16.0),
@@ -229,10 +232,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                             children: [
                               CircularProgressIndicator(strokeWidth: 2),
                               SizedBox(width: 16),
-                              Text(
-                                "Your friend is thinking...", 
-                                style: TextStyle(fontSize: 16, color: Colors.teal)
-                              ),
+                              Text("Your friend is thinking...",
+                                  style: TextStyle(
+                                      fontSize: 16, color: Colors.teal)),
                             ],
                           ),
                         ),
@@ -240,7 +242,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
 
                     if (provider.friendlyResponse != null)
                       Container(
-                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 16), 
+                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -256,7 +258,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                             Row(
+                            Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text(
@@ -268,13 +270,15 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.volume_up, color: Colors.blue),
+                                  icon: const Icon(Icons.volume_up,
+                                      color: Colors.blue),
                                   onPressed: () {
                                     // Re-speak the last response
                                     _ttsService.speak(
-                                      provider.friendlyResponse!, 
-                                      provider.currentLocaleId // Use the public getter
-                                    );
+                                        provider.friendlyResponse!,
+                                        provider
+                                            .currentLocaleId // Use the public getter
+                                        );
                                   },
                                 )
                               ],
@@ -284,7 +288,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                               provider.friendlyResponse!,
                               style: const TextStyle(
                                 fontSize: 16,
-                                height: 1.4, 
+                                height: 1.4,
                               ),
                             ),
                           ],
@@ -293,20 +297,17 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   ],
                 ),
               ),
-              
+
               // Control Section
               Container(
                 padding: const EdgeInsets.all(24),
-                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    )
-                  ]
-                ),
+                decoration: BoxDecoration(color: Colors.white, boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  )
+                ]),
                 child: _buildControlSection(provider),
               ),
             ],
@@ -361,9 +362,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
-              // Only pulse if not already disposed
-              if (!_pulseController.isDisposed) {
-                 return Transform.scale(
+              // --- *** FIX: Check 'mounted' instead of 'isDisposed' *** ---
+              if (mounted) {
+                return Transform.scale(
                   scale: _pulseAnimation.value,
                   child: child,
                 );
@@ -395,7 +396,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
 
   Widget _buildResultsSection(AudioDetectionProvider provider) {
     final result = provider.lastResult!;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -417,7 +418,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           ],
         ),
         const SizedBox(height: 16),
-        
+
         // Dominant Emotion
         Container(
           padding: const EdgeInsets.all(16),
@@ -461,9 +462,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // All Emotions
         Text(
           'Emotion Breakdown',
@@ -474,7 +475,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           ),
         ),
         const SizedBox(height: 8),
-        
+
         ...result.allEmotions.entries.map(
           (entry) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -485,9 +486,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Action Buttons
         Row(
           children: [
@@ -529,9 +530,11 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           animation: _pulseController,
           builder: (context, child) {
             return Transform.scale(
-              scale: provider.isRecording && !_pulseController.isDisposed ? _pulseAnimation.value : 1.0,
+              // --- *** FIX: Check 'mounted' instead of 'isDisposed' *** ---
+              scale:
+                  provider.isRecording && mounted ? _pulseAnimation.value : 1.0,
               child: GestureDetector(
-                onTap: provider.isProcessing 
+                onTap: provider.isProcessing
                     ? null // Disable tap while processing
                     : (provider.isRecording ? _stopRecording : _startRecording),
                 child: Container(
@@ -552,7 +555,8 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   child: provider.isProcessing
                       ? const Padding(
                           padding: EdgeInsets.all(32.0),
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 3),
                         )
                       : Icon(
                           provider.isRecording ? Icons.stop : Icons.mic,
@@ -564,9 +568,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             );
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Text(
           provider.isProcessing
               ? 'Analyzing...'
@@ -577,9 +581,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             color: Colors.grey[700],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Secondary Controls
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -588,22 +592,27 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
               icon: Icons.folder_open,
               label: 'Upload',
               onPressed: provider.isRecording || provider.isProcessing
-                  ? null 
+                  ? null
                   : _pickAudioFile,
             ),
             _buildSecondaryButton(
               icon: Icons.play_arrow,
               label: 'Play',
-              onPressed: provider.hasRecording && !provider.isRecording && !provider.isProcessing
-                  ? _playRecording 
+              onPressed: provider.hasRecording &&
+                      !provider.isRecording &&
+                      !provider.isProcessing
+                  ? _playRecording
                   : null,
             ),
             _buildSecondaryButton(
               icon: Icons.delete,
               label: 'Clear',
-              onPressed: (provider.hasRecording || provider.lastResult != null) && !provider.isRecording && !provider.isProcessing
-                  ? _clearRecording 
-                  : null,
+              onPressed:
+                  (provider.hasRecording || provider.lastResult != null) &&
+                          !provider.isRecording &&
+                          !provider.isProcessing
+                      ? _clearRecording
+                      : null,
             ),
           ],
         ),
@@ -622,10 +631,14 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: onPressed != null ? Colors.teal.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+            color: onPressed != null
+                ? Colors.teal.withOpacity(0.1)
+                : Colors.grey.withOpacity(0.1),
             shape: BoxShape.circle,
             border: Border.all(
-              color: onPressed != null ? Colors.teal.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+              color: onPressed != null
+                  ? Colors.teal.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.3),
             ),
           ),
           child: IconButton(
@@ -660,12 +673,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   Future<void> _stopRecording() async {
     try {
       final provider = context.read<AudioDetectionProvider>();
-      
-      // --- *** THIS IS THE FIX *** ---
-      // We only call stopRecording. The provider handles the analysis.
+
+      // --- This is correct. The provider handles the analysis. ---
       await provider.stopRecording();
-      // --- *** REMOVED: await provider.analyzeLastRecording(); *** ---
-      
     } catch (e) {
       _showError('Failed to stop recording: $e');
     }
@@ -714,8 +724,16 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         ),
         child: Column(
           children: [
-             // ... (Your settings UI) ...
-             const Padding(
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
                 'Audio Settings',
@@ -725,6 +743,34 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                 ),
               ),
             ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  SwitchListTile(
+                    title: const Text('Noise Reduction'),
+                    subtitle: const Text('Reduce background noise (simulated)'),
+                    value: true,
+                    onChanged: (value) {},
+                    activeColor: Colors.teal,
+                  ),
+                  SwitchListTile(
+                    title: const Text('Voice Activity Detection'),
+                    subtitle:
+                        const Text('Auto-detect when speaking (simulated)'),
+                    value: true,
+                    onChanged: (value) {},
+                    activeColor: Colors.teal,
+                  ),
+                  ListTile(
+                    title: const Text('Recording Quality'),
+                    subtitle: const Text('16kHz (wav)'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -732,12 +778,14 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   }
 
   void _saveResults(EmotionResult result) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Audio analysis saved successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Audio analysis saved successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   void _viewDetailedResults(EmotionResult result) {
@@ -772,6 +820,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       case 'happy':
         return Colors.green;
       case 'sad':
+      case 'sadness':
         return Colors.blue;
       case 'angry':
       case 'anger':

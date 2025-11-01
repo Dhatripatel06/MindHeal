@@ -12,12 +12,12 @@ class GeminiAdviserService {
   static final GeminiAdviserService _instance =
       GeminiAdviserService._internal();
   factory GeminiAdviserService() => _instance;
-  
+
   GeminiAdviserService._internal() {
     // Using the model from your original file
     _modelName = 'gemini-2.5-flash'; // Store the name
     _model = GenerativeModel(
-      model: _modelName, 
+      model: _modelName,
       apiKey: _apiKey,
       generationConfig: GenerationConfig(
         temperature: 0.7,
@@ -44,7 +44,7 @@ class GeminiAdviserService {
   }) async {
     try {
       log('🤖 Getting conversational advice for: "$userSpeech" (Emotion: $detectedEmotion) in $language');
-      
+
       final prompt = _buildConversationalPrompt(
         userSpeech: userSpeech,
         emotion: detectedEmotion,
@@ -64,7 +64,7 @@ class GeminiAdviserService {
     } catch (e) {
       log('❌ Error getting conversational advice: $e');
       // Fallback to simpler advice if conversational prompt fails
-      return _getFallbackAdvice(detectedEmotion, language); // This line is now fixed
+      return _getFallbackAdvice(detectedEmotion, language);
     }
   }
 
@@ -76,7 +76,8 @@ class GeminiAdviserService {
     String? userName,
   }) {
     final languageInstruction = _getLanguageInstruction(language);
-    final userNameInfo = userName != null ? " The user's name is $userName." : "";
+    final userNameInfo =
+        userName != null ? " The user's name is $userName." : "";
 
     return '''
     You are MindHeal AI, a compassionate, warm, and wise virtual best friend and counselor.
@@ -147,7 +148,7 @@ class GeminiAdviserService {
     } catch (e) {
       log('❌ Error getting emotional advice: $e');
       log('🔄 Using fallback advice for $detectedEmotion in $language');
-      return _getFallbackAdvice(detectedEmotion, language); // This line is also now fixed
+      return _getFallbackAdvice(detectedEmotion, language);
     }
   }
 
@@ -301,6 +302,11 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
     }
   }
 
+  /// Public accessor for fallback advice so other libraries can call it
+  String getFallbackAdvice(String emotion, [String language = 'English']) {
+    return _getFallbackAdvice(emotion, language);
+  }
+
   /// Hindi fallback advice
   String _getHindiFallbackAdvice(String emotion) {
     switch (emotion.toLowerCase()) {
@@ -317,7 +323,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
         return "मैं समझ सकता हूं कि आप इस समय गुस्से में हैं। 🔥 कुछ गहरी सांसें लें और दस तक गिनती करें। टहलने जाने या कुछ शारीरिक व्यायाम करने पर विचार करें। याद रखें, गुस्सा होना ठीक है, लेकिन इसे कैसे व्यक्त करते हैं यह मायने रखता है।";
 
       case 'fear':
-        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडING तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
+        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडिंग तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
 
       case 'surprise':
         return "लगता है कुछ अप्रत्याशિત हुआ है! 😮 आश्चर्य भारी लग सकता है, लेकिन ये विकास के अवसर भी होते हैं। एक पल लेकर सोचें कि आप क्या महसूस कर रहे हैं। कभी-कभी सबसे अच्छी चीजें अप्रत्याशित बदलावों से आती हैं।";
@@ -406,7 +412,8 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
 
       final response = await _model.generateContent(content);
 
-      if (response.text != null && response.text!.contains("API_TEST_SUCCESS")) {
+      if (response.text != null &&
+          response.text!.contains("API_TEST_SUCCESS")) {
         log('✅ API test successful. Response: ${response.text}');
         return true;
       } else {

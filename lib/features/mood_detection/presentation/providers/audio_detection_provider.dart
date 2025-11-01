@@ -33,7 +33,8 @@ class AudioDetectionProvider extends ChangeNotifier {
   StreamSubscription? _durationSubscription;
   StreamSubscription? _audioDataSubscription;
 
-
+  // Keep track of the last recorded file for analysis/playback
+  File? _lastRecordingFile;
   // --- State for New Feature ---
   String _selectedLanguage = 'English'; // 'English', 'हिंदी', 'ગુજરાતી'
 
@@ -48,23 +49,30 @@ class AudioDetectionProvider extends ChangeNotifier {
   List<double> get audioData => _audioData;
   Duration get recordingDuration => _recordingDuration;
   String get selectedLanguage => _selectedLanguage;
+  bool get isInitialized => _isInitialized;
 
   // --- Language Mapping ---
   /// Gets the ISO 639-1 code for Whisper and Translator
   String get currentLangCode {
     switch (_selectedLanguage) {
-      case 'हिंदी': return 'hi';
-      case 'ગુજરાતી': return 'gu';
-      default: return 'en';
+      case 'हिंदी':
+        return 'hi';
+      case 'ગુજરાતી':
+        return 'gu';
+      default:
+        return 'en';
     }
   }
-  
+
   /// Gets the BCP 47 code for Flutter TTS
   String get currentLocaleId {
     switch (_selectedLanguage) {
-      case 'हिंदी': return 'hi-IN';
-      case 'ગુજરાતી': return 'gu-IN';
-      default: return 'en-US';
+      case 'हिंदी':
+        return 'hi-IN';
+      case 'ગુજરાતી':
+        return 'gu-IN';
+      default:
+        return 'en-US';
     }
   }
 
@@ -72,16 +80,17 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
     await _emotionService.initialize();
-    
+
     // Cancel previous subscriptions if they exist
     _audioDataSubscription?.cancel();
     _durationSubscription?.cancel();
-    
+
     _audioDataSubscription = _audioService.audioDataStream.listen((data) {
       _audioData = data;
       notifyListeners();
     });
-    _durationSubscription = _audioService.recordingDurationStream.listen((duration) {
+    _durationSubscription =
+        _audioService.recordingDurationStream.listen((duration) {
       _recordingDuration = duration;
       notifyListeners();
     });
@@ -99,7 +108,7 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> startRecording() async {
     if (_isRecording) return;
     clearResults();
-    clearRecording();
+    clearRecording(); // Also clears audio data
     _isRecording = true;
     _isProcessing = false;
     _lastError = null;
@@ -125,6 +134,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       final audioFile = await _audioService.stopRecording();
       if (audioFile != null) {
         _hasRecording = true;
+        _lastRecordingFile = audioFile;
         await _runAnalysisPipeline(audioFile); // Run the new pipeline
       } else {
         throw Exception("Failed to save recording.");
@@ -152,7 +162,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       // This is complex and requires reading/downsampling the file.
       // For now, we'll just show an empty waveform.
       _audioData = [];
-      
+      _lastRecordingFile = audioFile;
       await _runAnalysisPipeline(audioFile); // Run the new pipeline
     } catch (e) {
       _lastError = "Error analyzing file: $e";
@@ -172,12 +182,33 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
+  /// Analyze the most recent recording if available.
+  Future<void> analyzeLastRecording() async {
+    if (_lastRecordingFile == null) {
+      _lastError = 'No recording available to analyze.';
+      notifyListeners();
+      return;
+    }
+
+    _isProcessing = true;
+    _lastError = null;
+    notifyListeners();
+    try {
+      await _runAnalysisPipeline(_lastRecordingFile!);
+    } catch (e) {
+      _lastError = 'Error analyzing last recording: $e';
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
   void clearRecording() {
     _audioService.clearRecording();
     _hasRecording = false;
     _audioData = [];
     _recordingDuration = Duration.zero;
-    clearResults();
+    clearResults(); // Clearing recording should also clear results
   }
 
   void clearResults() {
@@ -198,7 +229,8 @@ class AudioDetectionProvider extends ChangeNotifier {
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
       // 2. Transcribe Audio to Text (STT)
-      String userText = await _sttService.transcribeAudio(audioFile, currentLangCode);
+      String userText =
+          await _sttService.transcribeAudio(audioFile, currentLangCode);
       if (userText.isEmpty) {
         userText = "(User said nothing but felt $detectedEmotion)";
       }
@@ -229,11 +261,10 @@ class AudioDetectionProvider extends ChangeNotifier {
       _friendlyResponse = finalResponse;
       notifyListeners();
       await _ttsService.speak(finalResponse, currentLocaleId);
-
     } catch (e) {
       print("Error in analysis pipeline: $e");
       _lastError = "Error in analysis: $e";
-      // Provide a fallback response
+      // Provide a fallback response (use public helper on the instance)
       _friendlyResponse = _geminiService.getFallbackAdvice(
         _lastResult?.emotion ?? 'neutral',
         _selectedLanguage,
@@ -241,7 +272,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   @override
   void dispose() {
     _audioService.dispose();
