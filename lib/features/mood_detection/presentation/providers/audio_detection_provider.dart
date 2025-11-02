@@ -3,8 +3,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device Whisper
-import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device ML Kit
+import 'package:mental_wellness_app/core/services/local_transcription_service.dart'; // On-device Whisper
+import 'package:mental_wellness_app/core/services/local_transcription_service.dart'; // On-device ML Kit
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart';
@@ -75,6 +75,8 @@ class AudioDetectionProvider extends ChangeNotifier {
     // Download/load all on-device models
     await _emotionService.initialize();
     await _sttService.initialize();
+    
+    // --- *** FIX: Call the correct method *** ---
     await _translationService.downloadAllModels(); 
     
     // Cancel previous subscriptions if they exist
@@ -205,6 +207,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
       // 2. Transcribe Audio to Text (Local Whisper)
+      // --- *** FIX: Call _sttService, not _translationService *** ---
       String userText = await _sttService.transcribeAudio(audioFile, currentLangCode);
       if (userText.isEmpty) {
         userText = "(User said nothing but felt $detectedEmotion)";

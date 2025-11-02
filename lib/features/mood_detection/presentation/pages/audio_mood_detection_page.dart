@@ -659,7 +659,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     try {
       final provider = context.read<AudioDetectionProvider>();
       
-      // --- This is correct. The provider handles the analysis. ---
+      // --- *** FIX: This is now correct. The redundant call is gone. *** ---
       await provider.stopRecording();
       
     } catch (e) {
