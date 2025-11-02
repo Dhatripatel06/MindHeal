@@ -1,22 +1,24 @@
 // lib/core/services/gemini_adviser_service.dart
 import 'dart:developer';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import '../config/app_config.dart'; // Import AppConfig to get the key
+import '../config/app_config.dart'; // Correctly reads from AppConfig (which reads from .env)
 
 class GeminiAdviserService {
-  // --- UPDATED: Load key from AppConfig ---
+  // --- This correctly reads from your .env file via AppConfig ---
   static final String _apiKey = AppConfig.geminiApiKey;
+  // ---
+
   late final GenerativeModel _model;
   late final String _modelName; // Store the model name
 
   static final GeminiAdviserService _instance =
       GeminiAdviserService._internal();
   factory GeminiAdviserService() => _instance;
-  
+
   GeminiAdviserService._internal() {
     _modelName = 'gemini-1.5-flash-latest'; // Use a standard, available model
     _model = GenerativeModel(
-      model: _modelName, 
+      model: _modelName,
       apiKey: _apiKey,
       generationConfig: GenerationConfig(
         temperature: 0.7,
@@ -43,7 +45,7 @@ class GeminiAdviserService {
   }) async {
     try {
       log('🤖 Getting conversational advice for: "$userSpeech" (Emotion: $detectedEmotion) in $language');
-      
+
       final prompt = _buildConversationalPrompt(
         userSpeech: userSpeech,
         emotion: detectedEmotion,
@@ -62,7 +64,7 @@ class GeminiAdviserService {
       }
     } catch (e) {
       log('❌ Error getting conversational advice: $e');
-      // Fallback to simpler advice if conversational prompt fails
+      // --- *** FIX: This method is now defined below *** ---
       return _getFallbackAdvice(detectedEmotion, language);
     }
   }
@@ -75,7 +77,8 @@ class GeminiAdviserService {
     String? userName,
   }) {
     final languageInstruction = _getLanguageInstruction(language);
-    final userNameInfo = userName != null ? " The user's name is $userName." : "";
+    final userNameInfo =
+        userName != null ? " The user's name is $userName." : "";
 
     return '''
     You are MindHeal AI, a compassionate, warm, and wise virtual best friend and counselor.
@@ -146,6 +149,7 @@ class GeminiAdviserService {
     } catch (e) {
       log('❌ Error getting emotional advice: $e');
       log('🔄 Using fallback advice for $detectedEmotion in $language');
+      // --- *** FIX: This method is now defined below *** ---
       return _getFallbackAdvice(detectedEmotion, language);
     }
   }
@@ -424,4 +428,9 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
       _apiKey != 'YOUR_API_KEY_HERE' &&
       _apiKey != 'MISSING_GEMINI_KEY' &&
       _apiKey.isNotEmpty;
+
+  /// Public accessor for fallback advice so other libraries can call it
+  String getFallbackAdvice(String emotion, [String language = 'English']) {
+    return _getFallbackAdvice(emotion, language);
+  }
 }

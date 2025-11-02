@@ -3,8 +3,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device Whisper
-import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device ML Kit
+import 'package:mental_wellness_app/core/services/speech_transcription_service.dart';
+import 'package:mental_wellness_app/core/services/translation_service.dart';
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart';
@@ -14,8 +14,8 @@ class AudioDetectionProvider extends ChangeNotifier {
   // --- All Services ---
   final AudioProcessingService _audioService = AudioProcessingService();
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService();
-  final LocalTranslationService _sttService = LocalTranslationService();
-  final LocalTranslationService _translationService = LocalTranslationService();
+  final SpeechTranscriptionService _sttService = SpeechTranscriptionService();
+  final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
   final TtsService _ttsService = TtsService();
 
@@ -53,41 +53,44 @@ class AudioDetectionProvider extends ChangeNotifier {
   /// Gets the ISO 639-1 code for Whisper and Translator
   String get currentLangCode {
     switch (_selectedLanguage) {
-      case 'हिंदी': return 'hi';
-      case 'ગુજરાતી': return 'gu';
-      default: return 'en';
+      case 'हिंदी':
+        return 'hi';
+      case 'ગુજરાતી':
+        return 'gu';
+      default:
+        return 'en';
     }
   }
-  
+
   /// Gets the BCP 47 code for Flutter TTS
   String get currentLocaleId {
     switch (_selectedLanguage) {
-      case 'हिंदी': return 'hi-IN';
-      case 'ગુજરાતી': return 'gu-IN';
-      default: return 'en-US';
+      case 'हिंदी':
+        return 'hi-IN';
+      case 'ગુજરાતી':
+        return 'gu-IN';
+      default:
+        return 'en-US';
     }
   }
 
   // --- Initialization ---
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     // Download/load all on-device models
     await _emotionService.initialize();
-    await _sttService.initialize();
-    
-    // --- *** FIX 1: Call the correct method downloadAllModels() *** ---
-    await _translationService.downloadAllModels(); 
-    
+
     // Cancel previous subscriptions if they exist
     _audioDataSubscription?.cancel();
     _durationSubscription?.cancel();
-    
+
     _audioDataSubscription = _audioService.audioDataStream.listen((data) {
       _audioData = data;
       if (mounted) notifyListeners();
     });
-    _durationSubscription = _audioService.recordingDurationStream.listen((duration) {
+    _durationSubscription =
+        _audioService.recordingDurationStream.listen((duration) {
       _recordingDuration = duration;
       if (mounted) notifyListeners();
     });
@@ -119,6 +122,7 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
+  // Updated to return File? for combined_detection_provider
   Future<File?> stopRecording() async {
     if (!_isRecording) return null;
     _isRecording = false;
@@ -140,12 +144,12 @@ class AudioDetectionProvider extends ChangeNotifier {
       _lastError = "Error stopping/processing: $e";
       print(_lastError);
     } finally {
-      if(mounted) {
+      if (mounted) {
         _isProcessing = false;
         notifyListeners();
       }
     }
-    return audioFile; // Return the file path for other providers
+    return audioFile; // Return the file
   }
 
   Future<void> analyzeAudioFile(File audioFile) async {
@@ -164,7 +168,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       _lastError = "Error analyzing file: $e";
       print(_lastError);
     } finally {
-      if(mounted) {
+      if (mounted) {
         _isProcessing = false;
         notifyListeners();
       }
@@ -200,13 +204,14 @@ class AudioDetectionProvider extends ChangeNotifier {
     try {
       // 1. Analyze Emotion from Audio (Local ONNX)
       _lastResult = await _emotionService.analyzeAudio(audioFile);
-      if(mounted) notifyListeners(); // Show emotion bars immediately
+      if (mounted) notifyListeners(); // Show emotion bars immediately
 
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
       // 2. Transcribe Audio to Text (Local Whisper)
       // --- *** FIX 2: Call _sttService, not _translationService *** ---
-      String userText = await _sttService.transcribeAudio(audioFile, currentLangCode);
+      String userText =
+          await _sttService.transcribeAudio(audioFile, currentLangCode);
       if (userText.isEmpty) {
         userText = "(User said nothing but felt $detectedEmotion)";
       }
@@ -222,21 +227,20 @@ class AudioDetectionProvider extends ChangeNotifier {
       String englishResponse = await _geminiService.getConversationalAdvice(
         userSpeech: englishText,
         detectedEmotion: detectedEmotion,
-        language: 'English', 
+        language: 'English',
       );
 
       // 5. Translate Response back to User's Language (Local ML Kit)
       String finalResponse = await _translationService.translate(
         englishResponse,
         from: 'en',
-        to: currentLangCode, 
+        to: currentLangCode,
       );
 
       // 6. Set friendly response for UI and speak it
       _friendlyResponse = finalResponse;
-      if(mounted) notifyListeners();
+      if (mounted) notifyListeners();
       await _ttsService.speak(finalResponse, currentLocaleId);
-
     } catch (e) {
       print("Error in analysis pipeline: $e");
       _lastError = "Error in analysis: $e";
@@ -245,10 +249,10 @@ class AudioDetectionProvider extends ChangeNotifier {
         _lastResult?.emotion ?? 'neutral',
         _selectedLanguage,
       );
-      if(mounted) notifyListeners();
+      if (mounted) notifyListeners();
     }
   }
-  
+
   // --- Check if provider is still mounted before notifying listeners ---
   bool _mounted = true;
   bool get mounted => _mounted;

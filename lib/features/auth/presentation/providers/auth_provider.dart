@@ -7,7 +7,6 @@ import '../../domain/usecases/sign_in_with_google.dart';
 import '../../domain/usecases/sign_in_anonymously.dart';
 import '../../domain/usecases/sign_out.dart';
 import 'auth_state.dart';
-import '../../../../shared/models/app_user.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthRepository _authRepository;
@@ -25,11 +24,11 @@ class AuthProvider extends ChangeNotifier {
     required SignInWithGoogle signInWithGoogle,
     required SignInAnonymously signInAnonymously,
     required SignOut signOut,
-  }) : _authRepository = authRepository,
-       _signInWithEmail = signInWithEmail,
-       _signInWithGoogle = signInWithGoogle,
-       _signInAnonymously = signInAnonymously,
-       _signOut = signOut {
+  })  : _authRepository = authRepository,
+        _signInWithEmail = signInWithEmail,
+        _signInWithGoogle = signInWithGoogle,
+        _signInAnonymously = signInAnonymously,
+        _signOut = signOut {
     _initialize();
   }
 
@@ -73,11 +72,11 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _loadUserData(user) async {
     try {
       await _authRepository.reloadUser();
-      
+
       final userData = await _authRepository.getUserData();
       final isEmailVerified = await _authRepository.isEmailVerified();
       final isAnonymous = _authRepository.isAnonymous;
-      
+
       AuthStatus status;
       if (isAnonymous) {
         status = AuthStatus.authenticated;
@@ -86,7 +85,7 @@ class AuthProvider extends ChangeNotifier {
       } else {
         status = AuthStatus.authenticated;
       }
-      
+
       _updateState(_state.copyWith(
         status: status,
         user: user,
@@ -107,9 +106,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signInWithEmail(String email, String password) async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       final user = await _signInWithEmail(email, password);
-      
+
       if (user == null) {
         _updateState(_state.copyWith(
           isLoading: false,
@@ -119,7 +118,6 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _updateState(_state.copyWith(isLoading: false));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -129,15 +127,16 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> createUserWithEmail(
-    String email, 
-    String password, 
+    String email,
+    String password,
     String displayName,
   ) async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
-      final user = await _authRepository.createUserWithEmail(email, password, displayName);
-      
+
+      final user = await _authRepository.createUserWithEmail(
+          email, password, displayName);
+
       if (user == null) {
         _updateState(_state.copyWith(
           isLoading: false,
@@ -147,12 +146,12 @@ class AuthProvider extends ChangeNotifier {
       }
 
       await _authRepository.sendEmailVerification();
-      
+
       _updateState(_state.copyWith(
         isLoading: false,
-        successMessage: 'Account created! Please check your email for verification.',
+        successMessage:
+            'Account created! Please check your email for verification.',
       ));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -164,9 +163,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signInWithGoogle() async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       final user = await _signInWithGoogle();
-      
+
       if (user == null) {
         _updateState(_state.copyWith(
           isLoading: false,
@@ -176,7 +175,6 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _updateState(_state.copyWith(isLoading: false));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -188,9 +186,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signInAnonymously() async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       final user = await _signInAnonymously();
-      
+
       if (user == null) {
         _updateState(_state.copyWith(
           isLoading: false,
@@ -200,7 +198,6 @@ class AuthProvider extends ChangeNotifier {
       }
 
       _updateState(_state.copyWith(isLoading: false));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -210,15 +207,16 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> linkAnonymousWithEmail(
-    String email, 
-    String password, 
+    String email,
+    String password,
     String displayName,
   ) async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
-      final user = await _authRepository.linkAnonymousWithEmail(email, password, displayName);
-      
+
+      final user = await _authRepository.linkAnonymousWithEmail(
+          email, password, displayName);
+
       if (user == null) {
         _updateState(_state.copyWith(
           isLoading: false,
@@ -228,12 +226,11 @@ class AuthProvider extends ChangeNotifier {
       }
 
       await _authRepository.sendEmailVerification();
-      
+
       _updateState(_state.copyWith(
         isLoading: false,
         successMessage: 'Account linked! Please verify your email.',
       ));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -245,14 +242,13 @@ class AuthProvider extends ChangeNotifier {
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       await _authRepository.sendPasswordResetEmail(email);
-      
+
       _updateState(_state.copyWith(
         isLoading: false,
         successMessage: 'Password reset email sent!',
       ));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -277,10 +273,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> checkEmailVerification() async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       await _authRepository.reloadUser();
       final isVerified = await _authRepository.isEmailVerified();
-      
+
       if (isVerified) {
         await _loadUserData(_state.user);
         _updateState(_state.copyWith(
@@ -294,7 +290,6 @@ class AuthProvider extends ChangeNotifier {
           errorMessage: 'Email is not verified yet. Please check your inbox.',
         ));
       }
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -306,11 +301,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       await _signOut();
-      
+
       _updateState(_state.copyWith(isLoading: false));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,
@@ -322,11 +316,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> deleteAccount() async {
     try {
       _updateState(_state.copyWith(isLoading: true, clearError: true));
-      
+
       await _authRepository.deleteAccount();
-      
+
       _updateState(_state.copyWith(isLoading: false));
-      
     } catch (e) {
       _updateState(_state.copyWith(
         isLoading: false,

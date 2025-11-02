@@ -8,7 +8,6 @@ import 'image_detection_provider.dart';
 import 'audio_detection_provider.dart';
 
 class CombinedDetectionProvider extends ChangeNotifier {
-  // Use dependency injection for providers
   final ImageDetectionProvider _imageProvider;
   final AudioDetectionProvider _audioProvider;
   final GeminiAdviserService _geminiService;
@@ -20,15 +19,6 @@ class CombinedDetectionProvider extends ChangeNotifier {
   EmotionResult? _fusedResult;
   double _imageConfidence = 0.0;
   double _audioConfidence = 0.0;
-
-  // Constructor
-  CombinedDetectionProvider({
-    required ImageDetectionProvider imageProvider,
-    required AudioDetectionProvider audioProvider,
-    required GeminiAdviserService geminiService,
-  })  : _imageProvider = imageProvider,
-        _audioProvider = audioProvider,
-        _geminiService = geminiService;
 
   // Getters
   bool get isAnalyzing => _isAnalyzing;
@@ -42,7 +32,16 @@ class CombinedDetectionProvider extends ChangeNotifier {
   double get imageConfidence => _imageConfidence;
   double get audioConfidence => _audioConfidence;
 
-  // Face detection not implemented in the new provider, so return empty
+  // Constructor
+  CombinedDetectionProvider({
+    required ImageDetectionProvider imageProvider,
+    required AudioDetectionProvider audioProvider,
+    required GeminiAdviserService geminiService,
+  })  : _imageProvider = imageProvider,
+        _audioProvider = audioProvider,
+        _geminiService = geminiService;
+
+  // ✅ FIXED: Face detection not in this provider, returning empty
   List<Rect> get detectedFaces => []; 
 
   Map<String, double> get imageEmotions => _imageProvider.currentResult?.allEmotions ?? {};
@@ -75,6 +74,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
     try {
       if (_audioProvider.isRecording) {
         // --- *** FIX: stopRecording() now triggers analysis internally *** ---
+        // The analysis pipeline will run inside _audioProvider.stopRecording()
         await _audioProvider.stopRecording();
         // The line `await _audioProvider.analyzeLastRecording();` is no longer needed.
         // --- *** END FIX *** ---
@@ -82,7 +82,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
 
       if (_isFusionEnabled &&
           _imageProvider.currentResult != null &&
-          _audioProvider.lastResult != null) {
+          _audioProvider.lastResult != null) { // lastResult will be set by stopRecording()
         _performFusion();
       }
     } catch (e) {
@@ -93,6 +93,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
   }
 
   void _startAnalysisLoop() {
+    // This loop logic might need adjustment based on when results are actually ready
     Future.delayed(const Duration(seconds: 2), () {
       if (_isAnalyzing) {
         _performPeriodicAnalysis();
@@ -102,6 +103,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
   }
 
   Future<void> _performPeriodicAnalysis() async {
+    // This function is likely for live-streaming, but we'll adapt it
     if (_isVisualEnabled && _imageProvider.currentResult != null) {
       _imageConfidence = _imageProvider.currentResult!.confidence;
     }
@@ -129,8 +131,12 @@ class CombinedDetectionProvider extends ChangeNotifier {
     allEmotions.addAll(audioResult.allEmotions.keys.map((k) => k.toLowerCase()));
 
     for (final emotion in allEmotions) {
-      final imageConfidence = imageResult.allEmotions[emotion] ?? (imageResult.allEmotions[emotion.capitalize()] ?? 0.0);
-      final audioConfidence = audioResult.allEmotions[emotion] ?? (audioResult.allEmotions[emotion.capitalize()] ?? 0.0);
+      // Handle potential case mismatches (e.g., 'Happy' vs 'happy')
+      final imageValue = imageResult.allEmotions[emotion] ?? imageResult.allEmotions[emotion.capitalize()];
+      final audioValue = audioResult.allEmotions[emotion] ?? audioResult.allEmotions[emotion.capitalize()];
+
+      final imageConfidence = imageValue ?? 0.0;
+      final audioConfidence = audioValue ?? 0.0;
 
       // Simple weighted average
       final fusedConfidence = (imageConfidence * 0.6) + (audioConfidence * 0.4);

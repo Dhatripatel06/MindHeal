@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../providers/auth_state.dart';
 import '../widgets/login_form.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 

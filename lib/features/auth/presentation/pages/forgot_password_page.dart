@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../providers/auth_state.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -24,9 +23,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   Future<void> _sendResetEmail() async {
     if (_formKey.currentState!.validate()) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
+
       await authProvider.sendPasswordResetEmail(_emailController.text.trim());
-      
+
       if (mounted && !authProvider.state.hasError) {
         setState(() {
           _emailSent = true;
@@ -50,7 +49,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             if (_emailSent && !authProvider.state.hasError) {
               return _buildSuccessView();
             }
-            
+
             return _buildFormView(authProvider);
           },
         ),
@@ -65,7 +64,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 40),
-          
+
           // Title
           Center(
             child: Column(
@@ -79,24 +78,24 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 Text(
                   'Reset Password',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF2D3748),
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF2D3748),
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Enter your email address and we\'ll send you a link to reset your password.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF718096),
-                  ),
+                        color: const Color(0xFF718096),
+                      ),
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 48),
-          
+
           // Form
           Form(
             key: _formKey,
@@ -117,15 +116,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     if (value?.isEmpty ?? true) {
                       return 'Email is required';
                     }
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
+                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                        .hasMatch(value!)) {
                       return 'Please enter a valid email address';
                     }
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Error message
                 if (authProvider.state.hasError)
                   Container(
@@ -149,10 +149,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       ],
                     ),
                   ),
-                
+
                 // Send button
                 ElevatedButton(
-                  onPressed: authProvider.state.isLoading ? null : _sendResetEmail,
+                  onPressed:
+                      authProvider.state.isLoading ? null : _sendResetEmail,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -160,19 +161,19 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     ),
                   ),
                   child: authProvider.state.isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send Reset Link'),
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send Reset Link'),
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Back to login
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -190,7 +191,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 80),
-          
           Center(
             child: Column(
               children: [
@@ -211,32 +211,30 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 Text(
                   'Email Sent!',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF2D3748),
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF2D3748),
+                      ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'We\'ve sent a password reset link to ${_emailController.text}',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF718096),
-                  ),
+                        color: const Color(0xFF718096),
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Please check your email and follow the instructions to reset your password.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF718096),
-                  ),
+                        color: const Color(0xFF718096),
+                      ),
                 ),
               ],
             ),
           ),
-          
           const SizedBox(height: 48),
-          
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
@@ -247,9 +245,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ),
             child: const Text('Back to Login'),
           ),
-          
           const SizedBox(height: 16),
-          
           TextButton(
             onPressed: () {
               setState(() {
