@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device Whisper
+import 'package:mental_wellness_app/core/services/speech_transcription_service.dart'; // OpenAI Whisper
 import 'package:mental_wellness_app/core/services/local_translation_service.dart'; // On-device ML Kit
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
@@ -14,7 +14,7 @@ class AudioDetectionProvider extends ChangeNotifier {
   // --- All Services ---
   final AudioProcessingService _audioService = AudioProcessingService();
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService();
-  final LocalTranslationService _sttService = LocalTranslationService();
+  final SpeechTranscriptionService _sttService = SpeechTranscriptionService();
   final LocalTranslationService _translationService = LocalTranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
   final TtsService _ttsService = TtsService();
@@ -74,7 +74,7 @@ class AudioDetectionProvider extends ChangeNotifier {
     
     // Download/load all on-device models
     await _emotionService.initialize();
-    await _sttService.initialize();
+    
     
     // --- *** FIX 1: Call the correct method downloadAllModels() *** ---
     await _translationService.downloadAllModels(); 
@@ -203,7 +203,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
       // 2. Transcribe Audio to Text (Local Whisper)
-      // --- *** FIX 2: Call _sttService, not _translationService *** ---
+      
       String userText = await _sttService.transcribeAudio(audioFile, currentLangCode);
       if (userText.isEmpty) {
         userText = "(User said nothing but felt $detectedEmotion)";
