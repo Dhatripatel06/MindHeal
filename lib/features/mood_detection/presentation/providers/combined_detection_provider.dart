@@ -1,136 +1,170 @@
-// lib/features/mood_detection/presentation/providers/combined_detection_provider.dart
+import 'dart:ui' show Rect;
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
-import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
-import 'package:mental_wellness_app/features/mood_detection/presentation/providers/audio_detection_provider.dart';
-import 'package:mental_wellness_app/features/mood_detection/presentation/providers/image_detection_provider.dart';
+import '../../data/models/emotion_result.dart';
+import 'image_detection_provider.dart';
+import 'audio_detection_provider.dart';
 
 class CombinedDetectionProvider extends ChangeNotifier {
-  final ImageDetectionProvider _imageProvider;
-  final AudioDetectionProvider _audioProvider;
-  final GeminiAdviserService _geminiService;
+  final ImageDetectionProvider _imageProvider = ImageDetectionProvider();
+  final AudioDetectionProvider _audioProvider = AudioDetectionProvider();
 
-  bool _isProcessing = false;
-  String? _combinedAdvice;
-  String? _lastError;
-  EmotionResult? _lastCombinedResult;
+  bool _isAnalyzing = false;
+  bool _isVisualEnabled = true;
+  bool _isAudioEnabled = true;
+  bool _isFusionEnabled = true;
+  EmotionResult? _fusedResult;
+  double _imageConfidence = 0.0;
+  double _audioConfidence = 0.0;
 
-  CombinedDetectionProvider(
-    this._imageProvider,
-    this._audioProvider,
-    this._geminiService,
-  );
+  // Getters
+  bool get isAnalyzing => _isAnalyzing;
+  bool get isRecording => _audioProvider.isRecording;
+  bool get isVisualEnabled => _isVisualEnabled;
+  bool get isAudioEnabled => _isAudioEnabled;
+  bool get isFusionEnabled => _isFusionEnabled;
+  EmotionResult? get fusedResult => _fusedResult;
+  EmotionResult? get lastImageResult => _imageProvider.currentResult;
+  EmotionResult? get lastAudioResult => _audioProvider.lastResult;
+  double get imageConfidence => _imageConfidence;
+  double get audioConfidence => _audioConfidence;
 
-  bool get isProcessing => _isProcessing;
-  String? get combinedAdvice => _combinedAdvice;
-  String? get lastError => _lastError;
-  EmotionResult? get lastCombinedResult => _lastCombinedResult;
+  // ✅ FIXED: Convert List<Face> to List<Rect> - Now using working provider
+  List<Rect> get detectedFaces => []; // Face detection not implemented in current provider
 
-  bool get isAudioRecording => _audioProvider.isRecording;
+  Map<String, double> get imageEmotions => _imageProvider.currentResult?.allEmotions ?? {};
   List<double> get audioData => _audioProvider.audioData;
-  Duration get recordingDuration => _audioProvider.recordingDuration;
-  bool get hasAudioRecording => _audioProvider.hasRecording;
 
-  Future<void> startAudioRecording() async {
-    await _audioProvider.startRecording();
-  }
+  // Rest of your existing methods...
+  Future<void> startCombinedAnalysis() async {
+    if (!_isVisualEnabled && !_isAudioEnabled) return;
 
-  Future<void> stopRecordingAndAnalyze() async {
-    _isProcessing = true;
-    _combinedAdvice = null;
-    _lastError = null;
-    _lastCombinedResult = null;
+    _isAnalyzing = true;
     notifyListeners();
 
     try {
-      // 1. Stop audio recording (this also triggers audio analysis inside the audio provider)
-      // --- *** FIX: The 'analyzeLastRecording' call is removed *** ---
-      final audioFile = await _audioProvider.stopRecording();
-      if (audioFile == null) {
-        throw Exception("Audio recording failed or was cancelled.");
+      if (_isAudioEnabled) {
+        await _audioProvider.startRecording();
       }
-
-      // 2. Get the results from the individual providers
-      final imageResult = _imageProvider.lastResult;
-      final audioResult = _audioProvider.lastResult; // <-- Get result from here
-
-      if (imageResult == null) {
-        throw Exception("Image analysis has not been performed.");
-      }
-      if (audioResult == null) {
-        throw Exception("Audio analysis failed to produce a result.");
-      }
-
-      // 3. Combine the results
-      _lastCombinedResult = _combineResults(imageResult, audioResult);
-      
-      // 4. Get combined advice
-      final context = "Combined analysis. "
-          "Visual Emotion: ${imageResult.emotion} (Conf: ${imageResult.confidence.toStringAsFixed(2)}). "
-          "Audio Emotion: ${audioResult.emotion} (Conf: ${audioResult.confidence.toStringAsFixed(2)}). "
-          "Audio Text: ${_audioProvider.friendlyResponse?.split('\n').first ?? 'N/A'}"; // Get transcribed text if available
-
-      _combinedAdvice = await _geminiService.getEmotionalAdvice(
-        detectedEmotion: _lastCombinedResult!.emotion,
-        confidence: _lastCombinedResult!.confidence,
-        additionalContext: context,
-        language: _audioProvider.selectedLanguage, // Use language from audio provider
-      );
-
+      _startAnalysisLoop();
     } catch (e) {
-      _lastError = e.toString();
-      print("Error in combined analysis: $e");
-    } finally {
-      _isProcessing = false;
+      debugPrint('Error starting combined analysis: $e');
+      _isAnalyzing = false;
       notifyListeners();
     }
   }
 
-  EmotionResult _combineResults(EmotionResult imageResult, EmotionResult audioResult) {
-    // Simple combination logic: average the maps and find the highest
-    final combinedMap = <String, double>{};
+  Future<void> stopAnalysis() async {
+    _isAnalyzing = false;
 
-    // Add all keys from image result
-    for (var entry in imageResult.allEmotions.entries) {
-      combinedMap[entry.key.toLowerCase()] = (combinedMap[entry.key.toLowerCase()] ?? 0) + entry.value;
-    }
-    
-    // Add all keys from audio result
-    for (var entry in audioResult.allEmotions.entries) {
-      combinedMap[entry.key.toLowerCase()] = (combinedMap[entry.key.toLowerCase()] ?? 0) + entry.value;
-    }
-    
-    // Normalize (average)
-    combinedMap.forEach((key, value) {
-      combinedMap[key] = value / 2.0;
-    });
-
-    // Find the highest
-    String dominantEmotion = 'neutral';
-    double maxConfidence = 0.0;
-    combinedMap.forEach((key, value) {
-      if (value > maxConfidence) {
-        maxConfidence = value;
-        dominantEmotion = key;
+    try {
+      if (_audioProvider.isRecording) {
+        await _audioProvider.stopRecording();
+        if (_isAudioEnabled) {
+          await _audioProvider.analyzeLastRecording();
+        }
       }
-    });
 
-    return EmotionResult(
-      emotion: dominantEmotion,
-      confidence: maxConfidence,
-      allEmotions: combinedMap,
-      timestamp: DateTime.now(),
-      processingTimeMs: 0,
-    );
+      if (_isFusionEnabled &&
+          _imageProvider.currentResult != null &&
+          _audioProvider.lastResult != null) {
+        _performFusion();
+      }
+    } catch (e) {
+      debugPrint('Error stopping analysis: $e');
+    } finally {
+      notifyListeners();
+    }
   }
 
-  void clearAll() {
-    _imageProvider.clearResults();
-    _audioProvider.clearRecording();
-    _combinedAdvice = null;
-    _lastError = null;
-    _lastCombinedResult = null;
+  void _startAnalysisLoop() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_isAnalyzing) {
+        _performPeriodicAnalysis();
+        _startAnalysisLoop();
+      }
+    });
+  }
+
+  Future<void> _performPeriodicAnalysis() async {
+    if (_isVisualEnabled && _imageProvider.currentResult != null) {
+      _imageConfidence = _imageProvider.currentResult!.confidence;
+    }
+
+    if (_isAudioEnabled && _audioProvider.lastResult != null) {
+      _audioConfidence = _audioProvider.lastResult!.confidence;
+    }
+
+    if (_isFusionEnabled && _imageConfidence > 0 && _audioConfidence > 0) {
+      _performFusion();
+    }
+
+    notifyListeners();
+  }
+
+  void _performFusion() {
+    final imageResult = _imageProvider.currentResult;
+    final audioResult = _audioProvider.lastResult;
+
+    if (imageResult == null || audioResult == null) return;
+
+    final fusedEmotions = <String, double>{};
+    final allEmotions = <String>{};
+    allEmotions.addAll(imageResult.allEmotions.keys);
+    allEmotions.addAll(audioResult.allEmotions.keys);
+
+    for (final emotion in allEmotions) {
+      final imageConfidence = imageResult.allEmotions[emotion] ?? 0.0;
+      final audioConfidence = audioResult.allEmotions[emotion] ?? 0.0;
+
+      final fusedConfidence = (imageConfidence * 0.6) + (audioConfidence * 0.4);
+      fusedEmotions[emotion] = fusedConfidence;
+    }
+
+    final dominantEmotion =
+        fusedEmotions.entries.reduce((a, b) => a.value > b.value ? a : b);
+
+    _fusedResult = EmotionResult(
+      emotion: dominantEmotion.key,
+      confidence: dominantEmotion.value,
+      allEmotions: fusedEmotions,
+      timestamp: DateTime.now(),
+      processingTimeMs: 0, // Combined analysis doesn't have specific processing time
+    );
+
+    notifyListeners();
+  }
+
+  void toggleVisual(bool enabled) {
+    _isVisualEnabled = enabled;
+    notifyListeners();
+  }
+
+  void toggleAudio(bool enabled) {
+    _isAudioEnabled = enabled;
+    notifyListeners();
+  }
+
+  void toggleFusion(bool enabled) {
+    _isFusionEnabled = enabled;
+    notifyListeners();
+  }
+
+  Future<void> analyzeCameraFrame(File frameFile) async {
+    if (_isVisualEnabled) {
+      await _imageProvider.processImage(frameFile);
+      if (_imageProvider.currentResult != null) {
+        _imageConfidence = _imageProvider.currentResult!.confidence;
+      }
+      notifyListeners();
+    }
+  }
+
+  void clearResults() {
+    _fusedResult = null;
+    _imageProvider.reset();
+    _audioProvider.clearResults();
     notifyListeners();
   }
 }
