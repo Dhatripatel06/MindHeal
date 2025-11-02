@@ -84,6 +84,7 @@ dependencies:
   google_mlkit_face_detection: ^0.13.1  # This version exists
   google_mlkit_pose_detection: ^0.14.0 # This version exists
   google_mlkit_commons: ^0.11.0
+  google_mlkit_translation: 0.13.0
   # For Text-to-Speech
   # flutter_tts: ^3.8.3
 
@@ -96,7 +97,8 @@ dependencies:
   google_generative_ai: ^0.4.3 # Check pub.dev for the latest version
   flutter_tts: ^4.0.2        # Check pub.dev for the latest version
   translator: ^1.0.0
-  speech_to_text: ^6.6.1
+  speech_to_text: ^7.3.0
+
 
   #record: ^5.0.4
   record: ^6.1.1
@@ -134,6 +136,8 @@ flutter:
     - assets/audio/
     - assets/models/labels.txt
     - assets/models/enet_b0_8_best_afew.onnx
+    - assets/models/wav2vec2_superb_er.onnx
+    - assets/models/audio_emotion_labels.txt
     - assets/animations/
     - .env
 
