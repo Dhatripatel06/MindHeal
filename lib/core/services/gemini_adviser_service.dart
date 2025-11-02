@@ -63,7 +63,8 @@ class GeminiAdviserService {
       }
     } catch (e) {
       log('❌ Error getting conversational advice: $e');
-return getFallbackAdvice(detectedEmotion, language);
+      // Fallback to simpler advice if conversational prompt fails
+      return _getFallbackAdvice(detectedEmotion, language);
     }
   }
 
@@ -263,7 +264,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
   }
 
   /// Provide fallback advice when API fails
-  String getFallbackAdvice(String emotion, [String language = 'English']) {
+  String _getFallbackAdvice(String emotion, [String language = 'English']) {
     if (language == 'हिंदी') {
       return _getHindiFallbackAdvice(emotion);
     } else if (language == 'ગુજરાતી') {
