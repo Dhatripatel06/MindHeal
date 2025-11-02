@@ -1,14 +1,17 @@
+// lib/features/mood_detection/presentation/providers/combined_detection_provider.dart
 import 'dart:ui' show Rect;
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
+import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
 import '../../data/models/emotion_result.dart';
 import 'image_detection_provider.dart';
 import 'audio_detection_provider.dart';
 
 class CombinedDetectionProvider extends ChangeNotifier {
-  final ImageDetectionProvider _imageProvider = ImageDetectionProvider();
-  final AudioDetectionProvider _audioProvider = AudioDetectionProvider();
+  // Use dependency injection for providers
+  final ImageDetectionProvider _imageProvider;
+  final AudioDetectionProvider _audioProvider;
+  final GeminiAdviserService _geminiService;
 
   bool _isAnalyzing = false;
   bool _isVisualEnabled = true;
@@ -17,6 +20,15 @@ class CombinedDetectionProvider extends ChangeNotifier {
   EmotionResult? _fusedResult;
   double _imageConfidence = 0.0;
   double _audioConfidence = 0.0;
+
+  // Constructor
+  CombinedDetectionProvider({
+    required ImageDetectionProvider imageProvider,
+    required AudioDetectionProvider audioProvider,
+    required GeminiAdviserService geminiService,
+  })  : _imageProvider = imageProvider,
+        _audioProvider = audioProvider,
+        _geminiService = geminiService;
 
   // Getters
   bool get isAnalyzing => _isAnalyzing;
@@ -30,13 +42,15 @@ class CombinedDetectionProvider extends ChangeNotifier {
   double get imageConfidence => _imageConfidence;
   double get audioConfidence => _audioConfidence;
 
-  // ✅ FIXED: Convert List<Face> to List<Rect> - Now using working provider
-  List<Rect> get detectedFaces => []; // Face detection not implemented in current provider
+  // Face detection not implemented in the new provider, so return empty
+  List<Rect> get detectedFaces => []; 
 
   Map<String, double> get imageEmotions => _imageProvider.currentResult?.allEmotions ?? {};
   List<double> get audioData => _audioProvider.audioData;
+  Duration get recordingDuration => _audioProvider.recordingDuration;
+  bool get hasAudioRecording => _audioProvider.hasRecording;
 
-  // Rest of your existing methods...
+
   Future<void> startCombinedAnalysis() async {
     if (!_isVisualEnabled && !_isAudioEnabled) return;
 
@@ -60,10 +74,10 @@ class CombinedDetectionProvider extends ChangeNotifier {
 
     try {
       if (_audioProvider.isRecording) {
+        // --- *** FIX: stopRecording() now triggers analysis internally *** ---
         await _audioProvider.stopRecording();
-        if (_isAudioEnabled) {
-          await _audioProvider.analyzeLastRecording();
-        }
+        // The line `await _audioProvider.analyzeLastRecording();` is no longer needed.
+        // --- *** END FIX *** ---
       }
 
       if (_isFusionEnabled &&
@@ -111,13 +125,14 @@ class CombinedDetectionProvider extends ChangeNotifier {
 
     final fusedEmotions = <String, double>{};
     final allEmotions = <String>{};
-    allEmotions.addAll(imageResult.allEmotions.keys);
-    allEmotions.addAll(audioResult.allEmotions.keys);
+    allEmotions.addAll(imageResult.allEmotions.keys.map((k) => k.toLowerCase()));
+    allEmotions.addAll(audioResult.allEmotions.keys.map((k) => k.toLowerCase()));
 
     for (final emotion in allEmotions) {
-      final imageConfidence = imageResult.allEmotions[emotion] ?? 0.0;
-      final audioConfidence = audioResult.allEmotions[emotion] ?? 0.0;
+      final imageConfidence = imageResult.allEmotions[emotion] ?? (imageResult.allEmotions[emotion.capitalize()] ?? 0.0);
+      final audioConfidence = audioResult.allEmotions[emotion] ?? (audioResult.allEmotions[emotion.capitalize()] ?? 0.0);
 
+      // Simple weighted average
       final fusedConfidence = (imageConfidence * 0.6) + (audioConfidence * 0.4);
       fusedEmotions[emotion] = fusedConfidence;
     }
@@ -130,7 +145,7 @@ class CombinedDetectionProvider extends ChangeNotifier {
       confidence: dominantEmotion.value,
       allEmotions: fusedEmotions,
       timestamp: DateTime.now(),
-      processingTimeMs: 0, // Combined analysis doesn't have specific processing time
+      processingTimeMs: 0, // Combined analysis
     );
 
     notifyListeners();
@@ -166,5 +181,13 @@ class CombinedDetectionProvider extends ChangeNotifier {
     _imageProvider.reset();
     _audioProvider.clearResults();
     notifyListeners();
+  }
+}
+
+// Helper extension to capitalize strings for key matching
+extension StringExtension on String {
+  String capitalize() {
+    if (this.isEmpty) return "";
+    return "${this[0].toUpperCase()}${this.substring(1).toLowerCase()}";
   }
 }

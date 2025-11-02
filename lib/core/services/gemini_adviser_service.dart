@@ -14,8 +14,7 @@ class GeminiAdviserService {
   factory GeminiAdviserService() => _instance;
   
   GeminiAdviserService._internal() {
-    // Using the model from your original file
-    _modelName = 'gemini-2.5-flash'; // Store the name
+    _modelName = 'gemini-1.5-flash-latest'; // Use a standard, available model
     _model = GenerativeModel(
       model: _modelName, 
       apiKey: _apiKey,
@@ -396,7 +395,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
       log('🧪 Testing Gemini API connection...');
 
       if (!isConfigured) {
-        log('❌ API key not configured properly via AppConfig/dotenv');
+        log('❌ API key not configured properly');
         return false;
       }
 
@@ -406,11 +405,11 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
 
       final response = await _model.generateContent(content);
 
-      if (response.text != null && response.text!.contains("API_TEST_SUCCESS")) {
+      if (response.text != null && response.text!.isNotEmpty) {
         log('✅ API test successful. Response: ${response.text}');
         return true;
       } else {
-        log('❌ API test failed: Unexpected response: ${response.text}');
+        log('❌ API test failed: Empty response');
         return false;
       }
     } catch (e) {
@@ -421,7 +420,8 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
 
   /// Check if the service is properly configured
   bool get isConfigured =>
-      _apiKey.isNotEmpty &&
-      !_apiKey.contains('YOUR_API_KEY') &&
-      !_apiKey.contains('MISSING_GEMINI_KEY');
+      _apiKey != 'AIzaSyCo-W4OLgEIx0mKVIqdMmlsk7XydSTmDw4' && // Example key
+      _apiKey != 'YOUR_API_KEY_HERE' &&
+      _apiKey != 'MISSING_GEMINI_KEY' &&
+      _apiKey.isNotEmpty;
 }

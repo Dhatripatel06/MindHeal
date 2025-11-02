@@ -358,7 +358,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
-              // --- *** FIX: Check 'mounted' instead of 'isDisposed' *** ---
+              // --- *** FIX: Check 'mounted' *** ---
               if (mounted) {
                  return Transform.scale(
                   scale: _pulseAnimation.value,
@@ -526,7 +526,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           animation: _pulseController,
           builder: (context, child) {
             return Transform.scale(
-              // --- *** FIX: Check 'mounted' instead of 'isDisposed' *** ---
+              // --- *** FIX: Check 'mounted' *** ---
               scale: provider.isRecording && mounted ? _pulseAnimation.value : 1.0,
               child: GestureDetector(
                 onTap: provider.isProcessing 
@@ -659,7 +659,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     try {
       final provider = context.read<AudioDetectionProvider>();
       
-      // --- *** FIX: This is now correct. The redundant call is gone. *** ---
+      // --- *** FIX: This is now correct. The redundant 'analyzeLastRecording' call is GONE. *** ---
       await provider.stopRecording();
       
     } catch (e) {
