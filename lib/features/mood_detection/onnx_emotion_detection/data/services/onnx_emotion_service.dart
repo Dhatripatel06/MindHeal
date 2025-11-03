@@ -1,11 +1,12 @@
 // File: lib/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart
+// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-9237ee75ea85bf97b2f564b08ecd7bbf5af5e6e4/lib/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart
 
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart'; // Import for compute
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:logger/logger.dart';
@@ -14,57 +15,6 @@ import 'package:onnxruntime/onnxruntime.dart';
 
 // Assuming EmotionResult is in this path based on previous context
 import '../../../data/models/emotion_result.dart';
-
-// --- NEW --- TOP-LEVEL FUNCTION FOR COMPUTE ---
-// This function will run in a separate isolate.
-// It must be a top-level function or a static method.
-Future<EmotionResult> _detectEmotionsInIsolate(Uint8List imageBytes) async {
-  // Get the service instance. This will create a new instance
-  // for this isolate, with its own static variables.
-  final service = OnnxEmotionService.instance;
-
-  // Ensure the service (and its static session) is initialized *in this isolate*.
-  // This is crucial. It will load the model into memory for this isolate.
-  await service.initialize();
-
-  final stopwatch = Stopwatch()..start();
-  try {
-    // Now, call the static processing methods
-    final preprocessedInput =
-        await OnnxEmotionService._preprocessImage(imageBytes);
-    final probabilities = await OnnxEmotionService._runInference(preprocessedInput);
-    final probabilitiesSoftmax = OnnxEmotionService._softmax(probabilities);
-
-    final emotions = <String, double>{};
-    for (int i = 0; i < OnnxEmotionService._emotionClasses.length; i++) {
-      emotions[OnnxEmotionService._emotionClasses[i]] = probabilitiesSoftmax[i];
-    }
-
-    final maxEntry = emotions.entries.reduce((a, b) => a.value > b.value ? a : b);
-
-    // Use the static scaling method
-    final scaledConfidence = OnnxEmotionService._scaleConfidence(maxEntry.value);
-
-    stopwatch.stop();
-    final result = EmotionResult(
-      emotion: maxEntry.key,
-      confidence: scaledConfidence,
-      allEmotions: emotions,
-      timestamp: DateTime.now(),
-      processingTimeMs: stopwatch.elapsedMilliseconds,
-    );
-
-    // Note: Logging from an isolate might not appear in the main console
-    // service._logger.i('ISOLATE Emotion detected: ${result.emotion}');
-    return result;
-  } catch (e, stackTrace) {
-    stopwatch.stop();
-    // service._logger.e('❌ ISOLATE Emotion detection failed', error: e, stackTrace: stackTrace);
-    // This factory correctly uses 'errorMessage' as a parameter and assigns it to 'error'
-    return EmotionResult.error('Isolate detection failed: $e');
-  }
-}
-// --- END NEW ---
 
 class OnnxEmotionService {
   static const String _modelAssetPath =
@@ -87,8 +37,7 @@ class OnnxEmotionService {
   static OrtEnv? _env; //
   static OrtSession? _session; //
 
-  // --- MODIFIED --- Made static
-  static List<String> _emotionClasses = []; //
+  List<String> _emotionClasses = []; //
   bool _isInitialized = false; //
   bool _isInitializing = false; //
 
@@ -107,16 +56,13 @@ class OnnxEmotionService {
 
   /// Initialize the emotion detection service
   Future<bool> initialize() async {
-    // --- MODIFIED --- Allow re-initialization in different isolates
-    // Only block if this *specific instance* is initializing.
-    if (_isInitialized) return true;
-    if (_isInitializing) {
-      while (_isInitializing && !_isInitialized) {
-        await Future.delayed(const Duration(milliseconds: 100));
+    if (_isInitialized) return true; //
+    if (_isInitializing) { //
+      while (_isInitializing && !_isInitialized) { //
+        await Future.delayed(const Duration(milliseconds: 100)); //
       }
-      return _isInitialized;
+      return _isInitialized; //
     }
-    // --- END MODIFIED ---
 
     _isInitializing = true; //
     _logger.i('Initializing ONNX Emotion Service...'); //
@@ -146,10 +92,6 @@ class OnnxEmotionService {
 
   /// Load emotion classes from labels.txt
   Future<void> _loadEmotionClasses() async {
-    // --- MODIFIED --- Check if static list is already populated
-    if (_emotionClasses.isNotEmpty) return;
-    // --- END MODIFIED ---
-
     try {
       final labelsData = await rootBundle.loadString(_labelsAssetPath); //
       _emotionClasses = labelsData //
@@ -178,9 +120,6 @@ class OnnxEmotionService {
 
   /// Initialize ONNX Runtime
   Future<void> _initializeOnnxRuntime() async {
-    // --- MODIFIED --- Check if static env is already populated
-    if (_env != null) return;
-    // --- END MODIFIED ---
     try {
       _env = OrtEnv.instance; //
     } catch (e) {
@@ -191,9 +130,6 @@ class OnnxEmotionService {
 
   /// Load model from assets and create inference session
   Future<void> _loadModel() async {
-    // --- MODIFIED --- Check if static session is already populated
-    if (_session != null) return;
-    // --- END MODIFIED ---
     if (_env == null) throw Exception('ONNX Runtime not initialized'); //
 
     try {
@@ -214,58 +150,73 @@ class OnnxEmotionService {
     }
   }
 
-  // --- MODIFIED --- Made static
+  // --- NEW ---
   /// Scales the confidence score to the desired range (e.g., 90-99%).
   /// Warning: This artificially inflates the displayed confidence.
-  static double _scaleConfidence(double originalConfidence) {
-    // Map the input range [0.0, 1.0] to the output range [0.9, 0.09]
+  double _scaleConfidence(double originalConfidence) {
+    // Map the input range [0.0, 1.0] to the output range [0.9, 0.99]
     // scaled = min_output + (original * (max_output - min_output))
     return 0.9 + (originalConfidence * 0.09);
   }
-  // --- END MODIFIED ---
+  // --- END NEW ---
 
   /// Detect emotions from image bytes
   Future<EmotionResult> detectEmotions(Uint8List imageBytes) async {
-    if (!_isInitialized || _session == null) {
-      _logger.e('OnnxEmotionService not initialized. Call initialize() first.');
-      throw Exception(
+    if (!_isInitialized || _session == null) { //
+      _logger.e('OnnxEmotionService not initialized. Call initialize() first.'); //
+      throw Exception( //
           'OnnxEmotionService not initialized. Call initialize() first.');
     }
 
-    // --- MODIFIED ---
-    // Delegate the heavy work to the isolate function using compute
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = Stopwatch()..stop(); //
+    stopwatch.start(); //
 
     try {
-      // compute runs _detectEmotionsInIsolate in a background isolate
-      // and passes imageBytes to it.
-      final EmotionResult result =
-          await compute(_detectEmotionsInIsolate, imageBytes);
+      // Preprocess image
+      final preprocessedInput = await _preprocessImage(imageBytes); //
 
-      stopwatch.stop();
+      // Run inference
+      final probabilities = await _runInference(preprocessedInput); //
 
-      if (result.hasError) {
-        // --- THIS IS THE FIX ---
-        // Changed `result.errorMessage` to `result.error`
-        _logger.e('❌ Emotion detection failed in isolate',
-            error: result.error); 
-        // --- END FIX ---
-        return result;
+      // Apply Softmax to get probabilities
+      final probabilitiesSoftmax = _softmax(probabilities); //
+
+      // Process results - Store original probabilities
+      final emotions = <String, double>{}; //
+      for (int i = 0; i < _emotionClasses.length; i++) { //
+        emotions[_emotionClasses[i]] = probabilitiesSoftmax[i]; //
       }
 
-      // Log performance from the main thread's perspective (includes isolate spawn time)
-      final totalTime = stopwatch.elapsedMilliseconds.toDouble();
-      _updatePerformanceMetrics(totalTime);
-      _logger.i(
-          'Emotion detected: ${result.emotion} (Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%) - Total time: ${totalTime.toStringAsFixed(0)}ms (Processing: ${result.processingTimeMs}ms)');
+      // Find dominant emotion based on original probabilities
+      final maxEntry = //
+          emotions.entries.reduce((a, b) => a.value > b.value ? a : b);
 
+      // --- MODIFIED ---
+      // Scale the confidence for display purposes
+      final scaledConfidence = _scaleConfidence(maxEntry.value);
+      // --- END MODIFIED ---
+
+      // Update performance metrics
+      _updatePerformanceMetrics(stopwatch.elapsedMilliseconds.toDouble()); //
+
+      final result = EmotionResult( //
+        emotion: maxEntry.key,
+        // --- MODIFIED ---
+        confidence: scaledConfidence, // Use the scaled confidence
+        // --- END MODIFIED ---
+        allEmotions: emotions, // Keep original probabilities in the map
+        timestamp: DateTime.now(),
+        processingTimeMs: stopwatch.elapsedMilliseconds,
+      );
+
+      _logger.i('Emotion detected: ${result.emotion} (Raw: ${(maxEntry.value * 100).toStringAsFixed(1)}%, Scaled: ${(result.confidence * 100).toStringAsFixed(1)}%)'); // Modified log
       return result;
     } catch (e, stackTrace) {
-      stopwatch.stop();
-      _logger.e('❌ Failed to run compute task', error: e, stackTrace: stackTrace);
-      return EmotionResult.error('Compute task failed: $e');
+      _logger.e('❌ Emotion detection failed', error: e, stackTrace: stackTrace); //
+      return EmotionResult.error('Detection failed: $e'); // Return error result //
+    } finally {
+      stopwatch.stop(); //
     }
-    // --- END MODIFIED ---
   }
 
   /// Real-time detection with frame stabilization
@@ -275,7 +226,6 @@ class OnnxEmotionService {
     double stabilizationFactor = 0.3,
   }) async {
     // Get the current, real detection result (which already includes scaled confidence)
-    // This call is now non-blocking and runs in an isolate.
     final currentResult = await detectEmotions(imageBytes); //
 
     // If current detection failed, return the error
@@ -284,15 +234,12 @@ class OnnxEmotionService {
     }
 
     // Apply stabilization if previous result is valid
-    // This part is light and can run on the main thread
-    if (previousResult != null &&
-        stabilizationFactor > 0 &&
-        !previousResult.hasError) {
+    // Note: Stabilization is applied to the *original* probabilities before scaling
+    if (previousResult != null && stabilizationFactor > 0 && !previousResult.hasError) { //
       // Apply temporal stabilization to reduce flickering using the original probabilities
       final stabilizedEmotions = <String, double>{}; //
 
-      // --- MODIFIED --- Use static _emotionClasses
-      for (final emotion in _emotionClasses) {
+      for (final emotion in _emotionClasses) { //
         // Use the original (unscaled) probabilities from allEmotions map
         final currentValue = currentResult.allEmotions[emotion] ?? 0.0; //
         final previousValue = previousResult.allEmotions[emotion] ?? 0.0; //
@@ -309,17 +256,17 @@ class OnnxEmotionService {
 
       // --- MODIFIED ---
       // Scale the stabilized confidence for display
-      // Use static _scaleConfidence method
       final scaledStabilizedConfidence = _scaleConfidence(maxEntry.value);
       // --- END MODIFIED ---
 
       return EmotionResult( //
         emotion: maxEntry.key,
+        // --- MODIFIED ---
         confidence: scaledStabilizedConfidence, // Use scaled stabilized confidence
+        // --- END MODIFIED ---
         allEmotions: stabilizedEmotions, // Keep stabilized probabilities here
         timestamp: DateTime.now(),
-        processingTimeMs: currentResult
-            .processingTimeMs, // Use processing time from original detection
+        processingTimeMs: currentResult.processingTimeMs, // Use processing time from original detection //
       );
     }
 
@@ -342,21 +289,19 @@ class OnnxEmotionService {
     }
     final results = <EmotionResult>[]; //
     final stopwatch = Stopwatch()..start(); //
-    _logger
-        .d('🎯 Starting batch detection for ${imageBytesList.length} images...'); //
+    _logger.d('🎯 Starting batch detection for ${imageBytesList.length} images...'); //
     for (int i = 0; i < imageBytesList.length; i++) { //
-      // detectEmotions already handles scaling and runs in an isolate
+      // detectEmotions already handles scaling
       final result = await detectEmotions(imageBytesList[i]); //
       results.add(result); //
     }
-    _logger
-        .d('🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms'); //
+    _logger.d('🎉 Batch processing completed in ${stopwatch.elapsedMilliseconds}ms'); //
     return results;
   }
 
-  // --- MODIFIED --- Made static
+
   /// Preprocess image for model input (NCHW format)
-  static Future<Float32List> _preprocessImage(Uint8List imageBytes) async {
+  Future<Float32List> _preprocessImage(Uint8List imageBytes) async {
     try {
       // Decode image
       final image = img.decodeImage(imageBytes); //
@@ -392,17 +337,13 @@ class OnnxEmotionService {
 
       return input; //
     } catch (e) {
-      // Cannot use instance logger in static method
-      // _logger.e('❌ Image preprocessing failed', error: e); //
-      print('❌ Image preprocessing failed: $e');
+      _logger.e('❌ Image preprocessing failed', error: e); //
       rethrow;
     }
   }
-  // --- END MODIFIED ---
 
-  // --- MODIFIED --- Made static
   /// Run ONNX model inference
-  static Future<List<double>> _runInference(Float32List input) async {
+  Future<List<double>> _runInference(Float32List input) async {
     if (_session == null) throw Exception('ONNX session not initialized'); //
 
     OrtValue? inputOrt; //
@@ -447,21 +388,17 @@ class OnnxEmotionService {
         final probabilities = outputData.first.map((e) => e as double).toList(); //
 
         if (probabilities.length != _emotionClasses.length) { //
-          // Cannot use instance logger in static method
-          print(
-              'Output mismatch: Model output ${probabilities.length} classes, but labels file has ${_emotionClasses.length}');
+          _logger.e('Output mismatch: Model output ${probabilities.length} classes, but labels file has ${_emotionClasses.length}'); //
           throw Exception('Model output size mismatch');
         }
         return probabilities; //
       } else {
-        // Cannot use instance logger in static method
-        print('Unexpected output type: ${outputValue.runtimeType}'); //
-        print('Output value: $outputValue'); //
+        _logger.e('Unexpected output type: ${outputValue.runtimeType}'); //
+        _logger.e('Output value: $outputValue'); //
         throw Exception('Unexpected model output type');
       }
     } catch (e) {
-      // Cannot use instance logger in static method
-      print('❌ ONNX inference failed: $e'); //
+      _logger.e('❌ ONNX inference failed', error: e); //
       rethrow;
     } finally {
       // IMPORTANT: Release resources to avoid memory leaks
@@ -470,11 +407,9 @@ class OnnxEmotionService {
       outputs?.forEach((o) => o?.release()); //
     }
   }
-  // --- END MODIFIED ---
 
-  // --- MODIFIED --- Made static
   /// Apply softmax to the model output logits
-  static List<double> _softmax(List<double> logits) {
+  List<double> _softmax(List<double> logits) {
     if (logits.isEmpty) return []; //
 
     final double maxLogit = logits.reduce(max); //
@@ -490,7 +425,6 @@ class OnnxEmotionService {
 
     return expValues.map((val) => val / sumExp).toList(); //
   }
-  // --- END MODIFIED ---
 
   /// Update performance metrics
   void _updatePerformanceMetrics(double inferenceTime) {
@@ -526,10 +460,6 @@ class OnnxEmotionService {
     try {
       _session?.release(); //
       _session = null; //
-      // --- MODIFIED --- Also release the env
-      _env?.release();
-      _env = null;
-      // --- END MODIFIED ---
       _isInitialized = false; //
       _inferenceTimes.clear(); //
       _logger.i('🗑️ ONNX emotion detection service disposed'); //
