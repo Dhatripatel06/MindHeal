@@ -37,6 +37,13 @@ android {
         
         // Add multiDexEnabled for large app support
         multiDexEnabled = true
+
+        packagingOptions {
+        pickFirsts.add("lib/arm64-v8a/libonnxruntime.so")
+        pickFirsts.add("lib/armeabi-v7a/libonnxruntime.so")
+        pickFirsts.add("lib/x86/libonnxruntime.so")
+        pickFirsts.add("lib/x86_64/libonnxruntime.so")
+        }
     }
 
     buildTypes {
