@@ -22,6 +22,13 @@ allprojects {
         mavenCentral()
         maven("https://jitpack.io")
     }
+    configurations.all {
+        resolutionStrategy {
+            // This forces Gradle to use version 2.6.1 for all modules
+            force("androidx.lifecycle:lifecycle-viewmodel:2.6.1")
+            force("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
+        }
+    }
 }
 
 
