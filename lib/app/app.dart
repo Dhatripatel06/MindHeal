@@ -40,6 +40,7 @@ import '../features/chat/presentation/pages/chat_page.dart';
 import '../features/audio_healing/presentation/pages/audio_healing_page.dart';
 import '../features/biofeedback/presentation/providers/biofeedback_provider.dart';
 import '../features/biofeedback/presentation/providers/camera_heart_rate_provider.dart';
+import '../core/services/gemini_adviser_service.dart';
 
 
 
@@ -86,7 +87,13 @@ class MentalWellnessApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MoodDetectionProvider()),
         ChangeNotifierProvider(create: (_) => ImageDetectionProvider()),
         ChangeNotifierProvider(create: (_) => AudioDetectionProvider()),
-        ChangeNotifierProvider(create: (_) => CombinedDetectionProvider()),
+        ChangeNotifierProvider(create: (_) => CombinedDetectionProvider(
+          imageProvider: Provider.of<ImageDetectionProvider>(context),
+          audioProvider: Provider.of<AudioDetectionProvider>(context),
+          geminiService: GeminiAdviserService(),
+
+        )),
+
 
         // Biofeedback providers
         ChangeNotifierProvider(create: (_) => BiofeedbackProvider()),
