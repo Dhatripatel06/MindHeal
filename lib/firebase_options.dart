@@ -64,9 +64,11 @@ class DefaultFirebaseOptions {
     messagingSenderId: '934484241138',
     projectId: 'mental-wellness-app-64cb6',
     storageBucket: 'mental-wellness-app-64cb6.firebasestorage.app',
-    androidClientId: '934484241138-jvd3ve6p6h0or2kqbsgfs2ure837k675.apps.googleusercontent.com',
-    iosClientId: '934484241138-h67280v7je94dmqsjfjgeu522c1l8flv.apps.googleusercontent.com',
-    iosBundleId: 'com.example.mentalWellnessApp',
+    androidClientId:
+        '934484241138-jvd3ve6p6h0or2kqbsgfs2ure837k675.apps.googleusercontent.com',
+    iosClientId:
+        '934484241138-h67280v7je94dmqsjfjgeu522c1l8flv.apps.googleusercontent.com',
+    iosBundleId: 'com.mentalwellness.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -75,9 +77,11 @@ class DefaultFirebaseOptions {
     messagingSenderId: '934484241138',
     projectId: 'mental-wellness-app-64cb6',
     storageBucket: 'mental-wellness-app-64cb6.firebasestorage.app',
-    androidClientId: '934484241138-jvd3ve6p6h0or2kqbsgfs2ure837k675.apps.googleusercontent.com',
-    iosClientId: '934484241138-h67280v7je94dmqsjfjgeu522c1l8flv.apps.googleusercontent.com',
-    iosBundleId: 'com.example.mentalWellnessApp',
+    androidClientId:
+        '934484241138-jvd3ve6p6h0or2kqbsgfs2ure837k675.apps.googleusercontent.com',
+    iosClientId:
+        '934484241138-h67280v7je94dmqsjfjgeu522c1l8flv.apps.googleusercontent.com',
+    iosBundleId: 'com.mentalwellness.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

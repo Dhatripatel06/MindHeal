@@ -9,6 +9,9 @@ class FirebaseAuthService {
       'email',
       'profile',
     ],
+    // Add client ID for better Android compatibility
+    clientId:
+        '934484241138-klno99cg01iiildql4lfkpc76qh2bjqj.apps.googleusercontent.com',
   );
 
   // Stream of auth state changes
@@ -54,11 +57,24 @@ class FirebaseAuthService {
   // Sign in with Google
   Future<User?> signInWithGoogle() async {
     try {
+      // Ensure Google Sign-In is available
+      if (!await _googleSignIn.isSignedIn()) {
+        await _googleSignIn.signOut(); // Clear any cached state
+      }
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      if (googleUser == null) {
+        // User cancelled the sign-in process
+        return null;
+      }
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
+
+      // Validate that we have the required tokens
+      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+        throw Exception('Google authentication tokens are null');
+      }
 
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -68,6 +84,8 @@ class FirebaseAuthService {
       final UserCredential result =
           await _auth.signInWithCredential(credential);
       return result.user;
+    } on FirebaseAuthException catch (e) {
+      throw Exception('Firebase Auth error: ${e.code} - ${e.message}');
     } catch (e) {
       throw Exception('Google sign in failed: $e');
     }
