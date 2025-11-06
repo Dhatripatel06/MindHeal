@@ -20,6 +20,7 @@ dependencies:
   firebase_auth: ^6.1.0          
   cloud_firestore: ^6.0.2       
   google_sign_in: ^6.3.0
+  firebase_messaging: 16.0.4
   
   local_auth: ^2.1.6
   local_auth_android: ^1.0.34

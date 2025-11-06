@@ -10,8 +10,9 @@ buildscript {
         
     }
     dependencies {
-    classpath("com.android.tools.build:gradle:8.9.1")  // Updated for Health Connect compatibility
-        classpath(kotlin("gradle-plugin", version = "2.1.0"))
+        classpath("com.android.tools.build:gradle:8.7.0")
+        classpath(kotlin("gradle-plugin", version = "2.0.21"))
+
         
     }
 }
