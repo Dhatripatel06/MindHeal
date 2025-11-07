@@ -13,7 +13,10 @@ import 'package:mental_wellness_app/features/mood_detection/data/services/wav2ve
 class AudioDetectionProvider extends ChangeNotifier {
   // --- All Services ---
   final AudioProcessingService _audioService = AudioProcessingService();
-  final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService();
+  
+  // --- FIX 1: Use the singleton instance ---
+  final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService.instance;
+  
   final SpeechTranscriptionService _sttService = SpeechTranscriptionService();
   final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
@@ -78,8 +81,9 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // Download/load all on-device models
-    await _emotionService.initialize();
+    // --- FIX 2: Do NOT initialize the singleton service here ---
+    // This is now done in main.dart
+    // await _emotionService.initialize(); 
 
     // Cancel previous subscriptions if they exist
     _audioDataSubscription?.cancel();
@@ -95,7 +99,7 @@ class AudioDetectionProvider extends ChangeNotifier {
       if (mounted) notifyListeners();
     });
     _isInitialized = true;
-    print("AudioDetectionProvider Initialized with all on-device models.");
+    print("AudioDetectionProvider Initialized.");
   }
 
   // --- Language Selection ---
@@ -209,7 +213,6 @@ class AudioDetectionProvider extends ChangeNotifier {
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
       // 2. Transcribe Audio to Text (Local Whisper)
-      // --- *** FIX 2: Call _sttService, not _translationService *** ---
       String userText =
           await _sttService.transcribeAudio(audioFile, currentLangCode);
       if (userText.isEmpty) {
@@ -260,7 +263,11 @@ class AudioDetectionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _audioService.dispose();
-    _ttsService.dispose();
+    
+    // --- FIX 3: DO NOT DISPOSE THE TTS SERVICE ---
+    // This prevents the crash when navigating to other pages.
+    // _ttsService.dispose(); 
+    
     _durationSubscription?.cancel();
     _audioDataSubscription?.cancel();
     _mounted = false; // Set mounted to false

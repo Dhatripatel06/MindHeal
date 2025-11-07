@@ -1,9 +1,6 @@
 // File: lib/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart
-// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-9237ee75ea85bf97b2f564b08ecd7bbf5af5e6e4/lib/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart
-
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -413,8 +410,12 @@ class OnnxEmotionService {
     if (logits.isEmpty) return []; //
 
     final double maxLogit = logits.reduce(max); //
+    
+    // --- *** THIS IS THE FIX *** ---
+    // Changed maxLogT to maxLogit
     final List<double> expValues = //
         logits.map((logit) => exp(logit - maxLogit)).toList();
+    // --- *** END FIX *** ---
 
     final double sumExp = expValues.reduce((a, b) => a + b); //
 
@@ -447,6 +448,9 @@ class OnnxEmotionService {
       totalInferences: _totalInferences,
     );
   }
+
+  /// Public getter for the initialization status.
+  bool get isInitialized => _isInitialized;
 
   /// Check if service is ready
   bool get isReady => _isInitialized && _session != null; //

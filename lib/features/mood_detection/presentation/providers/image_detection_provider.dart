@@ -1,6 +1,4 @@
 // File: lib/features/mood_detection/presentation/providers/image_detection_provider.dart
-// Fetched from: uploaded:dhatripatel06/mindheal/MindHeal-9ec59a8e9c3f581e228ffb77877573cbd015a410/lib/features/mood_detection/presentation/providers/image_detection_provider.dart
-
 import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
@@ -11,7 +9,6 @@ import '../../data/models/emotion_result.dart'; //
 
 import '../../../../core/services/gemini_service.dart'; //
 import '../../../../core/services/tts_service.dart'; //
-
 
 class ImageDetectionProvider with ChangeNotifier {
   final OnnxEmotionService _emotionService = OnnxEmotionService.instance; //
@@ -37,7 +34,6 @@ class ImageDetectionProvider with ChangeNotifier {
   final List<String> _availableLanguages = ['English', 'Hindi', 'Gujarati']; //
   TtsState _ttsState = TtsState.stopped; //
 
-
   // Getters
   bool get isInitialized => _isInitialized; //
   bool get isProcessing => _isProcessing; //
@@ -55,9 +51,8 @@ class ImageDetectionProvider with ChangeNotifier {
   TtsState get ttsState => _ttsState; //
   bool get isSpeaking => _ttsState == TtsState.playing; //
 
-
   ImageDetectionProvider() {
-     // Listen to TTS state changes
+    // Listen to TTS state changes
     _ttsService.onStateChanged = (state) { //
       _ttsState = state; //
       notifyListeners(); //
@@ -72,7 +67,18 @@ class ImageDetectionProvider with ChangeNotifier {
       _error = null; //
       notifyListeners(); //
 
-      _isInitialized = await _emotionService.initialize(); //
+      // --- FIX 1: Use initialize from main.dart ---
+      // The service is now initialized in main.dart
+      // _isInitialized = await _emotionService.initialize(); //
+      
+      // We just check if the singleton is initialized
+      _isInitialized = _emotionService.isInitialized; 
+      if (!_isInitialized) {
+        print("Waiting for OnnxEmotionService to be initialized from main...");
+        // This is a fallback in case provider is created before main init is done
+        await _emotionService.initialize();
+        _isInitialized = _emotionService.isInitialized;
+      }
 
       notifyListeners(); //
     } catch (e) {
@@ -86,8 +92,8 @@ class ImageDetectionProvider with ChangeNotifier {
   /// Initialize camera for real-time detection
   Future<void> initializeCamera({bool useFrontCamera = true}) async {
     if (_cameraController != null && _cameraController!.value.isInitialized) { //
-       print("Camera already initialized.");
-       return;
+      print("Camera already initialized.");
+      return;
     }
     try {
       _error = null; //
@@ -145,7 +151,9 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Start real-time emotion detection
   Future<void> startRealTimeDetection() async {
-    if (!_isInitialized || _cameraController == null || !_cameraController!.value.isInitialized) { //
+    if (!_isInitialized ||
+        _cameraController == null ||
+        !_cameraController!.value.isInitialized) { //
       throw Exception('Initialize camera first');
     }
     if (_isRealTimeMode) return; //
@@ -153,7 +161,8 @@ class ImageDetectionProvider with ChangeNotifier {
     _isRealTimeMode = true; //
     notifyListeners(); //
 
-    _detectionTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async { //
+    _detectionTimer =
+        Timer.periodic(const Duration(milliseconds: 1500), (timer) async { //
       if (_isProcessing || !_isRealTimeMode) return; //
 
       try {
@@ -169,7 +178,7 @@ class ImageDetectionProvider with ChangeNotifier {
 
         // Clear advice if mood changes
         if (_currentResult?.emotion != result.emotion) { //
-           _adviceText = null; //
+          _adviceText = null; //
         }
 
         _currentResult = result; //
@@ -186,9 +195,9 @@ class ImageDetectionProvider with ChangeNotifier {
       } catch (e) {
         print('Real-time detection error: $e'); //
         _isProcessing = false; //
-         // Optionally set error state
-         // _error = 'Detection failed: $e';
-         // notifyListeners();
+        // Optionally set error state
+        // _error = 'Detection failed: $e';
+        // notifyListeners();
       }
     });
   }
@@ -246,7 +255,7 @@ class ImageDetectionProvider with ChangeNotifier {
     try {
       _isProcessing = true; //
       _error = null; //
-       _adviceText = null; //
+      _adviceText = null; //
       notifyListeners(); //
 
       final imageBytesList = <Uint8List>[]; //
@@ -277,7 +286,6 @@ class ImageDetectionProvider with ChangeNotifier {
     }
   }
 
-
   /// Add result to history
   void _addToHistory(EmotionResult result) {
     _history.insert(0, result); //
@@ -304,51 +312,56 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Fetch advice from Gemini based on the current mood and selected language
   Future<void> fetchAdvice() async {
-     // Use the provider's currentResult as the context for advice
-     final moodToAdvise = _currentResult?.emotion;
+    // Use the provider's currentResult as the context for advice
+    final moodToAdvise = _currentResult?.emotion;
 
-     if (moodToAdvise == null || moodToAdvise == 'none' || _currentResult!.hasError) { //
-       _adviceText = "Detect a valid mood first to get advice."; //
-       notifyListeners(); //
-       return;
-     }
-     if (!_geminiService.isAvailable) { //
-       _adviceText = "Advice service is unavailable. Check API key."; //
-        notifyListeners(); //
-       return;
-     }
+    if (moodToAdvise == null ||
+        moodToAdvise == 'none' ||
+        _currentResult!.hasError) { //
+      _adviceText = "Detect a valid mood first to get advice."; //
+      notifyListeners(); //
+      return;
+    }
+    if (!_geminiService.isAvailable) { //
+      _adviceText = "Advice service is unavailable. Check API key."; //
+      notifyListeners(); //
+      return;
+    }
 
-     _isFetchingAdvice = true; //
-     _adviceText = null; // Clear previous advice while fetching //
-     _error = null; // Clear previous errors
-     await _ttsService.stop(); //
-     notifyListeners(); // Show loading state //
+    _isFetchingAdvice = true; //
+    _adviceText = null; // Clear previous advice while fetching //
+    _error = null; // Clear previous errors
+    await _ttsService.stop(); //
+    notifyListeners(); // Show loading state //
 
-     try {
-       final advice = await _geminiService.getAdvice( //
-         mood: moodToAdvise, // Use the determined mood
-         language: _selectedLanguage, //
-       );
-       _adviceText = advice; //
-     } catch(e) {
-       _adviceText = "Error fetching advice: $e"; //
-       _error = _adviceText; // Also set general error
-     } finally {
-       _isFetchingAdvice = false; //
-       notifyListeners(); // Update UI with advice or error //
-     }
+    try {
+      final advice = await _geminiService.getAdvice( //
+        mood: moodToAdvise, // Use the determined mood
+        language: _selectedLanguage, //
+      );
+      _adviceText = advice; //
+    } catch (e) {
+      _adviceText = "Error fetching advice: $e"; //
+      _error = _adviceText; // Also set general error
+    } finally {
+      _isFetchingAdvice = false; //
+      notifyListeners(); // Update UI with advice or error //
+    }
   }
 
   /// Speak the current advice text using TTS
   Future<void> speakAdvice() async {
-    if (_adviceText != null && _adviceText!.isNotEmpty && ! _adviceText!.startsWith("Error") && _ttsState != TtsState.playing) { //
+    if (_adviceText != null &&
+        _adviceText!.isNotEmpty &&
+        !_adviceText!.startsWith("Error") &&
+        _ttsState != TtsState.playing) { //
       String langCode = 'en-US'; // Default //
       if (_selectedLanguage == 'Hindi') langCode = 'hi-IN'; //
       if (_selectedLanguage == 'Gujarati') langCode = 'gu-IN'; //
 
       await _ttsService.speak(_adviceText!, langCode); //
     } else if (_ttsState == TtsState.playing) { //
-       await _ttsService.pause(); // Or stop() //
+      await _ttsService.pause(); // Or stop() //
     } else {
       print("No valid advice text to speak or already speaking."); //
     }
@@ -356,7 +369,7 @@ class ImageDetectionProvider with ChangeNotifier {
 
   /// Stop TTS
   Future<void> stopSpeaking() async {
-     await _ttsService.stop(); //
+    await _ttsService.stop(); //
   }
 
   /// Get emotion statistics from history
@@ -415,66 +428,64 @@ class ImageDetectionProvider with ChangeNotifier {
   // --- END NEW METHOD ---
 // Add this method
   /// Resets only the advice-related state, typically called when navigating to a new result page.
-  
 
   // Add this method (or modify existing fetchAdvice to accept optional mood)
   // --- ADD THESE TWO METHODS INSIDE ImageDetectionProvider CLASS ---
 
   /// Resets only the advice-related state.
- 
 
   /// Fetch advice from Gemini specifically for the given mood.
   Future<void> fetchAdviceForMood(String mood) async {
-     if (mood.isEmpty || mood == 'none' || mood.startsWith("Error")) { // Basic validation
-       _adviceText = "Error: Cannot get advice for an unknown or error mood.";
-       _isFetchingAdvice = false; // Ensure loading stops
-       notifyListeners();
-       return;
-     }
-     
-     // Set the provider's currentResult *before* calling Gemini
-     // This is safe because processImage just set it.
-     _currentResult = EmotionResult(
-         emotion: mood,
-         confidence: _currentResult?.confidence ?? 0.0, // Retain old confidence if available
-         allEmotions: _currentResult?.allEmotions ?? {mood: 1.0}, // Retain old map or create new
-         timestamp: _currentResult?.timestamp ?? DateTime.now(),
-         processingTimeMs: _currentResult?.processingTimeMs ?? 0
-     );
+    if (mood.isEmpty || mood == 'none' || mood.startsWith("Error")) { // Basic validation
+      _adviceText = "Error: Cannot get advice for an unknown or error mood.";
+      _isFetchingAdvice = false; // Ensure loading stops
+      notifyListeners();
+      return;
+    }
 
+    // Set the provider's currentResult *before* calling Gemini
+    // This is safe because processImage just set it.
+    _currentResult = EmotionResult(
+        emotion: mood,
+        confidence: _currentResult?.confidence ?? 0.0, // Retain old confidence if available
+        allEmotions:
+            _currentResult?.allEmotions ?? {mood: 1.0}, // Retain old map or create new
+        timestamp: _currentResult?.timestamp ?? DateTime.now(),
+        processingTimeMs: _currentResult?.processingTimeMs ?? 0);
 
-     if (!_geminiService.isAvailable) {
-       _adviceText = "Error: Advice service is unavailable (Model init failed).";
-       _isFetchingAdvice = false; // Ensure loading stops
-        notifyListeners();
-       return;
-     }
+    if (!_geminiService.isAvailable) {
+      _adviceText = "Error: Advice service is unavailable (Model init failed).";
+      _isFetchingAdvice = false; // Ensure loading stops
+      notifyListeners();
+      return;
+    }
 
-     _isFetchingAdvice = true;
-     _adviceText = null; // Clear previous advice while fetching
-     _error = null; // Clear previous errors
-     await _ttsService.stop();
-     notifyListeners(); // Show loading state
+    _isFetchingAdvice = true;
+    _adviceText = null; // Clear previous advice while fetching
+    _error = null; // Clear previous errors
+    await _ttsService.stop();
+    notifyListeners(); // Show loading state
 
-     try {
-       final advice = await _geminiService.getAdvice(
-         mood: mood, // Use the passed mood
-         language: _selectedLanguage,
-       );
-       _adviceText = advice;
-       if (advice != null && (advice.startsWith("Sorry") || advice.startsWith("Error"))) { // Check if Gemini returned an error message
-           _error = advice; // Treat known Gemini errors as general errors too
-           // Keep adviceText as the error so UI displays it
-       }
-     } catch(e) {
-       _adviceText = "Error: $e"; // Ensure error message starts with "Error"
-       _error = _adviceText;
-       // _logger.e("Error fetching advice for mood $mood", error: e); // Use logger if you have one
-       print("Error fetching advice for mood $mood: $e");
-     } finally {
-       _isFetchingAdvice = false;
-       notifyListeners(); // Update UI with advice or error
-     }
+    try {
+      final advice = await _geminiService.getAdvice(
+        mood: mood, // Use the passed mood
+        language: _selectedLanguage,
+      );
+      _adviceText = advice;
+      if (advice != null &&
+          (advice.startsWith("Sorry") || advice.startsWith("Error"))) { // Check if Gemini returned an error message
+        _error = advice; // Treat known Gemini errors as general errors too
+        // Keep adviceText as the error so UI displays it
+      }
+    } catch (e) {
+      _adviceText = "Error: $e"; // Ensure error message starts with "Error"
+      _error = _adviceText;
+      // _logger.e("Error fetching advice for mood $mood", error: e); // Use logger if you have one
+      print("Error fetching advice for mood $mood: $e");
+    } finally {
+      _isFetchingAdvice = false;
+      notifyListeners(); // Update UI with advice or error
+    }
   }
   // --- END OF METHODS TO ADD ---
 
@@ -482,7 +493,11 @@ class ImageDetectionProvider with ChangeNotifier {
   void dispose() {
     _detectionTimer?.cancel(); //
     _cameraController?.dispose(); //
-    _ttsService.dispose(); //
+    
+    // --- FIX 2: DO NOT DISPOSE THE TTS SERVICE ---
+    // This prevents the crash when navigating to other pages.
+    // _ttsService.dispose(); //
+    
     super.dispose(); //
   }
 }
