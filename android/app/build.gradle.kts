@@ -147,13 +147,13 @@ dependencies {
     // Bluetooth support
     implementation("androidx.bluetooth:bluetooth:1.0.0-alpha02")
     
-    // Biometric authentication
-    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    
     
     // Health and sensors
     implementation("androidx.health.connect:connect-client:1.1.0-alpha08")
     
     
+
     
     // File operations
     implementation("androidx.documentfile:documentfile:1.0.1")
