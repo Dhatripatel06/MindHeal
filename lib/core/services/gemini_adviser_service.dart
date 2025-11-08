@@ -1,21 +1,20 @@
 // lib/core/services/gemini_adviser_service.dart
 import 'dart:developer';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import '../config/app_config.dart'; // Correctly reads from AppConfig (which reads from .env)
+// Import flutter_dotenv
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class GeminiAdviserService {
-  // --- This correctly reads from your .env file via AppConfig ---
-  static final String _apiKey = AppConfig.geminiApiKey;
-  // ---
+  // Make the instance nullable and static
+  static GeminiAdviserService? _instance;
 
+  // Make the model and key late final instance variables
   late final GenerativeModel _model;
-  late final String _modelName; // Store the model name
+  late final String _modelName;
+  late final String _apiKey;
 
-  static final GeminiAdviserService _instance =
-      GeminiAdviserService._internal();
-  factory GeminiAdviserService() => _instance;
-
-  GeminiAdviserService._internal() {
+  // Private constructor now takes the key
+  GeminiAdviserService._internal(this._apiKey) {
     _modelName = 'gemini-1.5-flash-latest'; // Use a standard, available model
     _model = GenerativeModel(
       model: _modelName,
@@ -33,6 +32,17 @@ class GeminiAdviserService {
         SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.medium),
       ],
     );
+  }
+
+  // Factory constructor now initializes the singleton on first use
+  factory GeminiAdviserService() {
+    // If the instance doesn't exist, create it.
+    if (_instance == null) {
+      // Read the key from dotenv *now*. By this time, main() should have run.
+      final apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'MISSING_GEMINI_KEY';
+      _instance = GeminiAdviserService._internal(apiKey);
+    }
+    return _instance!;
   }
 
   // --- NEW METHOD for Audio "Friend" Feature ---
@@ -117,7 +127,6 @@ class GeminiAdviserService {
     String? additionalContext,
     String language = 'English',
   }) async {
-    
     // --- THIS IS THE FIX ---
     // Check if the API key is loaded *before* trying to make a call.
     if (!isConfigured) {
@@ -129,7 +138,7 @@ class GeminiAdviserService {
 
     try {
       log('🤖 Getting emotional advice for: $detectedEmotion with confidence: ${(confidence * 100).toInt()}% in $language');
-      log('🔑 API Key configured: ${isConfigured}'); // This should now be true
+      log('🔑 API Key configured: ${isConfigured}');
 
       final prompt = _buildAdvicePrompt(
         emotion: detectedEmotion,
@@ -330,7 +339,7 @@ IMPORTANT: You MUST respond ONLY in Gujarati (ગુજરાતી) language us
         return "मैं समझ सकता हूं कि आप इस समय गुस्से में हैं। 🔥 कुछ गहरी सांसें लें और दस तक गिनती करें। टहलने जाने या कुछ शारीरिक व्यायाम करने पर विचार करें। याद रखें, गुस्सा होना ठीक है, लेकिन इसे कैसे व्यक्त करते हैं यह मायने रखता है।";
 
       case 'fear':
-        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडING तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
+        return "मैं समझ सकता हूं कि आप चिंतित या डरे हुए महसूस कर रहे हैं। 🤗 याद रखें कि आप जितना सोचते हैं उससे कहीं अधिक मजबूत हैं। ५-४-३-२-१ ग्राउंडिंग तकनीक आजमाएं: ५ चीजें जो आप देखते हैं, ४ जिन्हें छू सकते हैं, ३ जो सुनते हैं, २ जिन्हें सूंघ सकते हैं, और १ जिसका स्वाद ले सकते हैं। धीमी, गहरी सांसें लें।";
 
       case 'surprise':
         return "लगता है कुछ अप्रत्याશિત हुआ है! 😮 आश्चर्य भारी लग सकता है, लेकिन ये विकास के अवसर भी होते हैं। एक पल लेकर सोचें कि आप क्या महसूस कर रहे हैं। कभी-कभी सबसे अच्छी चीजें अप्रत्याशित बदलावों से आती हैं।";
