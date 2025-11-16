@@ -3,7 +3,10 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:mental_wellness_app/core/services/gemini_adviser_service.dart';
-import 'package:mental_wellness_app/core/services/speech_transcription_service.dart';
+// --- FIX: Import the new service ---
+import 'package:mental_wellness_app/core/services/live_speech_transcription_service.dart';
+// --- FIX: DELETE this import ---
+// import 'package:mental_wellness_app/core/services/speech_transcription_service.dart'; 
 import 'package:mental_wellness_app/core/services/translation_service.dart';
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
@@ -13,11 +16,11 @@ import 'package:mental_wellness_app/features/mood_detection/data/services/wav2ve
 class AudioDetectionProvider extends ChangeNotifier {
   // --- All Services ---
   final AudioProcessingService _audioService = AudioProcessingService();
-  
-  // --- FIX 1: Use the singleton instance ---
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService.instance;
   
-  final SpeechTranscriptionService _sttService = SpeechTranscriptionService();
+  // --- FIX: Use the new service ---
+  final LiveSpeechTranscriptionService _sttService = LiveSpeechTranscriptionService();
+  
   final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
   final TtsService _ttsService = TtsService();
@@ -26,7 +29,7 @@ class AudioDetectionProvider extends ChangeNotifier {
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isProcessing = false;
-  bool _isVoiceDetected = false; // Note: This is hard to detect accurately
+  bool _isVoiceDetected = false;
   bool _hasRecording = false;
   EmotionResult? _lastResult;
   String? _friendlyResponse;
@@ -36,13 +39,15 @@ class AudioDetectionProvider extends ChangeNotifier {
   StreamSubscription? _durationSubscription;
   StreamSubscription? _audioDataSubscription;
 
-  // --- State for New Feature ---
-  String _selectedLanguage = 'English'; // 'English', 'हिंदी', 'ગુજરાતી'
+  // --- FIX: Add state for live text ---
+  String _liveTranscribedText = "";
+
+  String _selectedLanguage = 'English';
 
   // --- Getters for UI ---
   bool get isRecording => _isRecording;
   bool get isProcessing => _isProcessing;
-  bool get isVoiceDetected => _isVoiceDetected; // Placeholder
+  bool get isVoiceDetected => _isVoiceDetected;
   bool get hasRecording => _hasRecording;
   EmotionResult? get lastResult => _lastResult;
   String? get friendlyResponse => _friendlyResponse;
@@ -50,10 +55,14 @@ class AudioDetectionProvider extends ChangeNotifier {
   List<double> get audioData => _audioData;
   Duration get recordingDuration => _recordingDuration;
   String get selectedLanguage => _selectedLanguage;
-  bool get isInitialized => _isInitialized; // Expose this
+  bool get isInitialized => _isInitialized;
+
+  // --- FIX: Getter for live text ---
+  String get liveTranscribedText => _liveTranscribedText;
+
 
   // --- Language Mapping ---
-  /// Gets the ISO 639-1 code for Whisper and Translator
+  /// Gets the ISO 639-1 code for Translator
   String get currentLangCode {
     switch (_selectedLanguage) {
       case 'हिंदी':
@@ -65,7 +74,7 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Gets the BCP 47 code for Flutter TTS
+  /// Gets the BCP 47 code for Flutter TTS AND speech_to_text
   String get currentLocaleId {
     switch (_selectedLanguage) {
       case 'हिंदी':
@@ -81,11 +90,22 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // --- FIX 2: Do NOT initialize the singleton service here ---
-    // This is now done in main.dart
-    // await _emotionService.initialize(); 
+    // --- FIX: Initialize the new STT service ---
+    await _sttService.initialize();
+    // Listen to updates from the STT service
+    _sttService.addListener(() {
+      _liveTranscribedText = _sttService.liveWords;
+      if (_isRecording && !_sttService.isListening) {
+        // STT stopped prematurely (e.g., silence), so we stop everything
+        if (mounted) {
+           print("STT stopped, stopping recording...");
+           stopRecording(); 
+        }
+      } else {
+        if (mounted) notifyListeners();
+      }
+    });
 
-    // Cancel previous subscriptions if they exist
     _audioDataSubscription?.cancel();
     _durationSubscription?.cancel();
 
@@ -112,13 +132,16 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> startRecording() async {
     if (_isRecording) return;
     clearResults();
-    clearRecording(); // Also clears audio data
+    clearRecording();
     _isRecording = true;
     _isProcessing = false;
     _lastError = null;
+    _liveTranscribedText = ""; // Clear live text
     notifyListeners();
     try {
+      // --- FIX: Start both services ---
       await _audioService.startRecording();
+      await _sttService.startListening(currentLocaleId);
     } catch (e) {
       _lastError = e.toString();
       _isRecording = false;
@@ -126,21 +149,27 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
-  // Updated to return File? for combined_detection_provider
   Future<File?> stopRecording() async {
     if (!_isRecording) return null;
     _isRecording = false;
-    _isProcessing = true; // Now we process
+    _isProcessing = true;
     _lastError = null;
-    _recordingDuration = Duration.zero; // Reset duration
+    _recordingDuration = Duration.zero;
     notifyListeners();
 
     File? audioFile;
     try {
+      // --- FIX: Stop both services and get results ---
       audioFile = await _audioService.stopRecording();
+      await _sttService.stopListening();
+      final String transcribedText = _sttService.finalText;
+      
+      _liveTranscribedText = transcribedText; // Show final text
+
       if (audioFile != null) {
         _hasRecording = true;
-        await _runAnalysisPipeline(audioFile); // Run the new pipeline
+        // --- FIX: Pass the text to the pipeline ---
+        await _runAnalysisPipeline(audioFile, transcribedText);
       } else {
         throw Exception("Failed to save recording.");
       }
@@ -153,7 +182,7 @@ class AudioDetectionProvider extends ChangeNotifier {
         notifyListeners();
       }
     }
-    return audioFile; // Return the file
+    return audioFile;
   }
 
   Future<void> analyzeAudioFile(File audioFile) async {
@@ -161,13 +190,16 @@ class AudioDetectionProvider extends ChangeNotifier {
     clearRecording();
     _isRecording = false;
     _isProcessing = true;
-    _hasRecording = true; // We have a file
+    _hasRecording = true;
     _lastError = null;
+    _liveTranscribedText = "(Cannot transcribe an uploaded file)"; // Set message
     notifyListeners();
 
     try {
-      _audioData = []; // Waveform for uploaded files is not implemented
-      await _runAnalysisPipeline(audioFile); // Run the new pipeline
+      _audioData = [];
+      // --- FIX: We can't transcribe a file, so just run emotion analysis
+      // And use a placeholder text
+      await _runAnalysisPipeline(audioFile, "(Uploaded audio file)");
     } catch (e) {
       _lastError = "Error analyzing file: $e";
       print(_lastError);
@@ -193,7 +225,8 @@ class AudioDetectionProvider extends ChangeNotifier {
     _hasRecording = false;
     _audioData = [];
     _recordingDuration = Duration.zero;
-    clearResults(); // Clearing recording should also clear results
+    _liveTranscribedText = ""; // Clear text
+    clearResults();
   }
 
   void clearResults() {
@@ -204,18 +237,17 @@ class AudioDetectionProvider extends ChangeNotifier {
   }
 
   // --- *** THE ANALYSIS PIPELINE *** ---
-  Future<void> _runAnalysisPipeline(File audioFile) async {
+  // --- FIX: Take userText as an argument ---
+  Future<void> _runAnalysisPipeline(File audioFile, String userText) async {
     try {
       // 1. Analyze Emotion from Audio (Local ONNX)
       _lastResult = await _emotionService.analyzeAudio(audioFile);
-      if (mounted) notifyListeners(); // Show emotion bars immediately
+      if (mounted) notifyListeners();
 
       final detectedEmotion = _lastResult?.emotion ?? 'neutral';
 
-      // 2. Transcribe Audio to Text (Local Whisper)
-      String userText =
-          await _sttService.transcribeAudio(audioFile, currentLangCode);
-      if (userText.isEmpty) {
+      // 2. Transcribe Audio to Text (REMOVED - we now get it as an argument)
+      if (userText.isEmpty || userText == "(Uploaded audio file)") {
         userText = "(User said nothing but felt $detectedEmotion)";
       }
 
@@ -247,7 +279,6 @@ class AudioDetectionProvider extends ChangeNotifier {
     } catch (e) {
       print("Error in analysis pipeline: $e");
       _lastError = "Error in analysis: $e";
-      // Provide a fallback response using the public method
       _friendlyResponse = _geminiService.getFallbackAdvice(
         _lastResult?.emotion ?? 'neutral',
         _selectedLanguage,
@@ -256,21 +287,16 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
-  // --- Check if provider is still mounted before notifying listeners ---
   bool _mounted = true;
   bool get mounted => _mounted;
 
   @override
   void dispose() {
     _audioService.dispose();
-    
-    // --- FIX 3: DO NOT DISPOSE THE TTS SERVICE ---
-    // This prevents the crash when navigating to other pages.
-    // _ttsService.dispose(); 
-    
+    _sttService.dispose(); // --- FIX: Dispose the new service ---
     _durationSubscription?.cancel();
     _audioDataSubscription?.cancel();
-    _mounted = false; // Set mounted to false
+    _mounted = false;
     super.dispose();
   }
 

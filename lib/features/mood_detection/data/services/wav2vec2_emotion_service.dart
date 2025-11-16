@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
-import 'package:onnxruntime/onnxruntime.dart';
+import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -12,7 +12,6 @@ class Wav2Vec2EmotionService {
   bool _isInitialized = false;
 
   // --- START SINGLETON ---
-  // Make the service a singleton
   static final Wav2Vec2EmotionService _instance =
       Wav2Vec2EmotionService._internal();
   factory Wav2Vec2EmotionService() => _instance;
@@ -27,13 +26,16 @@ class Wav2Vec2EmotionService {
       return;
     }
     try {
+      // --- FIX 1: New initialization logic ---
+      final ort = OnnxRuntime();
       final modelData =
           await rootBundle.load('assets/models/wav2vec2_superb_er.onnx');
       _session =
-          OrtSession.fromBuffer(modelData.buffer.asUint8List(), OrtSessionOptions());
+          await ort.createSessionFromBuffer(modelData.buffer.asUint8List());
 
+      // --- FIX 3: Corrected the label file path ---
       final labelsData =
-          await rootBundle.loadString('assets/models/wav2vec2_labels.txt');
+          await rootBundle.loadString('assets/models/audio_emotion_labels.txt');
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
 
       _isInitialized = true;
@@ -56,7 +58,6 @@ class Wav2Vec2EmotionService {
       }
     }
 
-    // This is the fallback result
     final fallbackResult = EmotionResult(
       emotion: 'neutral',
       confidence: 1.0,
@@ -66,8 +67,7 @@ class Wav2Vec2EmotionService {
     );
 
     OrtValue? inputTensor;
-    OrtRunOptions? runOptions;
-    List<OrtValue?>? outputs;
+    Map<String, OrtValue>? outputs;
 
     try {
       // 1. Read audio data
@@ -86,24 +86,31 @@ class Wav2Vec2EmotionService {
 
       // 2. Prepare model input
       final shape = [1, audioFloats.length];
-      inputTensor = OrtValueTensor.createTensorWithDataList(audioFloats, shape);
+      
+      // --- FIX 1: New tensor creation logic ---
+      inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
 
-      // 3. Run inference
-      final inputs = {'input': inputTensor}; // Key might be 'input_values'
-      runOptions = OrtRunOptions();
-      outputs = await _session!.runAsync(runOptions, inputs);
+      // --- FIX 1: New run logic ---
+      // Your model structure shows the input name is 'input'
+      final inputs = {'input': inputTensor};
+      outputs = await _session!.run(inputs);
 
       // 4. Process output
-      if (outputs == null || outputs.isEmpty || outputs[0] == null) {
-        throw Exception("Model output is null or empty");
+      if (outputs == null || outputs.isEmpty || outputs['logits'] == null) {
+        throw Exception("Model output is null or empty, or 'logits' key is missing");
       }
 
-      final outputTensor = outputs[0]!.value as List<List<double>>?;
-      if (outputTensor == null || outputTensor.isEmpty) {
-        throw Exception("Model output tensor is null or empty");
+      // --- FIX 1: New output processing logic ---
+      // Your model structure shows 'logits' is [1, 4]
+      // so asList() will return a List<List<dynamic>>
+      final outputValue = await outputs['logits']!.asList();
+      if (outputValue == null || (outputValue as List).isEmpty) {
+         throw Exception("Model output 'logits' is null or empty");
       }
 
-      final scores = outputTensor[0];
+      // Get the first (and only) batch, and cast scores to double
+      final scores = (outputValue as List).first.cast<double>();
+
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
@@ -138,10 +145,9 @@ class Wav2Vec2EmotionService {
       print("Error during Wav2Vec2 inference: $e");
       return fallbackResult;
     } finally {
-      // Release resources
+      // --- FIX 1: New release logic ---
       inputTensor?.release();
-      runOptions?.release();
-      outputs?.forEach((o) => o?.release());
+      outputs?.values.forEach((o) => o.release());
     }
   }
 }

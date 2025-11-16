@@ -5,7 +5,7 @@ import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../data/models/emotion_result.dart';
-import '../providers/audio_detection_provider.dart'; // This is now the correct provider
+import '../providers/audio_detection_provider.dart'; 
 import '../widgets/waveform_visualizer.dart';
 import '../widgets/emotion_confidence_bar.dart';
 import 'mood_results_page.dart';
@@ -22,7 +22,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   
-  // To get the locale for the TTS playback button
   final TtsService _ttsService = TtsService();
 
   @override
@@ -37,10 +36,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Initialize the provider
-    // We can't use context.read in initState, so we do it post-frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Ensure provider is initialized only once
       final provider = context.read<AudioDetectionProvider>();
       if (!provider.isInitialized) {
          provider.initialize();
@@ -51,7 +47,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   @override
   void dispose() {
     _pulseController.dispose();
-    _ttsService.dispose(); // Dispose the TTS service
+    _ttsService.dispose();
     super.dispose();
   }
 
@@ -67,7 +63,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         backgroundColor: Colors.teal,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // --- NEW: Language Selector ---
           Consumer<AudioDetectionProvider>(
             builder: (context, provider, child) {
               return DropdownButton<String>(
@@ -76,7 +71,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                 iconEnabledColor: Colors.white,
                 underline: Container(),
                 onChanged: provider.isRecording || provider.isProcessing
-                    ? null // Disable during recording/processing
+                    ? null
                     : (String? newValue) {
                         if (newValue != null) {
                           provider.setLanguage(newValue);
@@ -95,14 +90,13 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
               );
             },
           ),
-          // --- END NEW ---
           IconButton(
             icon: const Icon(Icons.folder_open),
             onPressed: context.watch<AudioDetectionProvider>().isRecording
-                ? null // Disable during recording
+                ? null 
                 : _pickAudioFile,
           ),
-          SizedBox(width: 10), // Added for spacing
+          SizedBox(width: 10),
         ],
       ),
       body: Consumer<AudioDetectionProvider>(
@@ -115,7 +109,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                   children: [
                     // Waveform Visualization Area
                     Container(
-                      height: 250, // Increased height
+                      height: 250,
                       margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -138,7 +132,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                               color: Colors.teal,
                             ),
                             
-                            // Voice Activity Indicator
                             if (provider.isRecording)
                               Positioned(
                                 top: 20,
@@ -146,7 +139,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                 child: _buildVoiceActivityIndicator(provider),
                               ),
                             
-                            // Recording Timer
                             if (provider.isRecording)
                               Positioned(
                                 top: 20,
@@ -154,35 +146,26 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                 child: _buildRecordingTimer(provider),
                               ),
                             
-                            // Center Message
-                            if (!provider.isRecording && provider.audioData.isEmpty && !provider.hasRecording)
-                              const Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.mic,
-                                      size: 64,
-                                      color: Colors.grey,
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'Tap the microphone to start recording',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.grey,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                              ),
+                            // --- FIX: Show live transcript ---
+                            if (provider.isRecording)
+                              _buildLiveTranscript(provider.liveTranscribedText),
+
+                            if (!provider.isRecording &&
+                                provider.audioData.isEmpty &&
+                                !provider.hasRecording &&
+                                provider.liveTranscribedText.isEmpty)
+                              _buildCenterMessage(),
+
+                            // --- FIX: Show final transcript after recording ---
+                            if (!provider.isRecording &&
+                                provider.liveTranscribedText.isNotEmpty &&
+                                provider.lastResult == null)
+                              _buildLiveTranscript(provider.liveTranscribedText, isFinal: true),
                           ],
                         ),
                       ),
                     ),
                     
-                    // Error Message
                     if (provider.lastError != null)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -197,7 +180,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                         ),
                       ),
 
-                    // Results Section
                     if (provider.lastResult != null)
                       Container(
                         margin: const EdgeInsets.fromLTRB(16, 8, 16, 8), 
@@ -213,10 +195,10 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                             ),
                           ],
                         ),
-                        child: _buildResultsSection(provider),
+                        // --- FIX: Pass transcribed text to results ---
+                        child: _buildResultsSection(provider, provider.liveTranscribedText),
                       ),
                       
-                    // Friendly Response
                     if (provider.isProcessing && provider.friendlyResponse == null)
                       const Center(
                         child: Padding(
@@ -267,10 +249,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                                 IconButton(
                                   icon: const Icon(Icons.volume_up, color: Colors.blue),
                                   onPressed: () {
-                                    // Re-speak the last response
                                     _ttsService.speak(
                                       provider.friendlyResponse!, 
-                                      provider.currentLocaleId // Use the public getter
+                                      provider.currentLocaleId
                                     );
                                   },
                                 )
@@ -291,7 +272,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
                 ),
               ),
               
-              // Control Section
               Container(
                 padding: const EdgeInsets.all(24),
                  decoration: BoxDecoration(
@@ -312,6 +292,63 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
       ),
     );
   }
+
+  // --- FIX: New widget for center message ---
+  Widget _buildCenterMessage() {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mic,
+            size: 64,
+            color: Colors.grey,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Tap the microphone to start recording',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // --- FIX: New widget to show live text ---
+  Widget _buildLiveTranscript(String text, {bool isFinal = false}) {
+    return Positioned.fill(
+      bottom: 20,
+      left: 20,
+      right: 20,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: isFinal ? Colors.white : Colors.black.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: isFinal ? Border.all(color: Colors.grey[300]!) : null,
+          ),
+          child: Text(
+            text.isEmpty ? "Listening..." : text,
+            style: TextStyle(
+              color: isFinal ? Colors.black87 : Colors.white,
+              fontSize: 16,
+              fontWeight: isFinal ? FontWeight.w600 : FontWeight.normal,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildVoiceActivityIndicator(AudioDetectionProvider provider) {
     return Container(
@@ -358,7 +395,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
-              // --- *** FIX: Check 'mounted' *** ---
               if (mounted) {
                  return Transform.scale(
                   scale: _pulseAnimation.value,
@@ -390,7 +426,8 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     );
   }
 
-  Widget _buildResultsSection(AudioDetectionProvider provider) {
+  // --- FIX: Accept the transcribed text ---
+  Widget _buildResultsSection(AudioDetectionProvider provider, String transcribedText) {
     final result = provider.lastResult!;
     
     return Column(
@@ -414,8 +451,27 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
           ],
         ),
         const SizedBox(height: 16),
+
+        // --- FIX: Show what the user said ---
+        Text(
+          'What you said:',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '"$transcribedText"',
+          style: const TextStyle(
+            fontSize: 16,
+            fontStyle: FontStyle.italic,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 16),
         
-        // Dominant Emotion
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -461,7 +517,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 16),
         
-        // All Emotions
         Text(
           'Emotion Breakdown',
           style: TextStyle(
@@ -485,7 +540,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 16),
         
-        // Action Buttons
         Row(
           children: [
             Expanded(
@@ -521,16 +575,14 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Main Recording Button
         AnimatedBuilder(
           animation: _pulseController,
           builder: (context, child) {
             return Transform.scale(
-              // --- *** FIX: Check 'mounted' *** ---
               scale: provider.isRecording && mounted ? _pulseAnimation.value : 1.0,
               child: GestureDetector(
                 onTap: provider.isProcessing 
-                    ? null // Disable tap while processing
+                    ? null
                     : (provider.isRecording ? _stopRecording : _startRecording),
                 child: Container(
                   width: 100,
@@ -578,7 +630,6 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
         
         const SizedBox(height: 24),
         
-        // Secondary Controls
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -599,7 +650,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
             _buildSecondaryButton(
               icon: Icons.delete,
               label: 'Clear',
-              onPressed: (provider.hasRecording || provider.lastResult != null) && !provider.isRecording && !provider.isProcessing
+              onPressed: (provider.hasRecording || provider.lastResult != null || provider.liveTranscribedText.isNotEmpty) && !provider.isRecording && !provider.isProcessing
                   ? _clearRecording 
                   : null,
             ),
@@ -658,10 +709,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
   Future<void> _stopRecording() async {
     try {
       final provider = context.read<AudioDetectionProvider>();
-      
-      // --- *** FIX: This is now correct. The redundant 'analyzeLastRecording' call is GONE. *** ---
       await provider.stopRecording();
-      
     } catch (e) {
       _showError('Failed to stop recording: $e');
     }
@@ -696,9 +744,8 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     final provider = context.read<AudioDetectionProvider>();
     provider.clearRecording();
   }
-
+  
   void _showAudioSettings() {
-    // This was your original function, left as-is.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,

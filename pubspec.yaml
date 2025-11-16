@@ -87,8 +87,7 @@ dependencies:
 
 
   #onnx
-  onnxruntime: ^1.4.1
-
+  flutter_onnxruntime: ^1.6.0
   # For Text-to-Speech
   # Add these lines
   google_generative_ai: ^0.4.3 # Check pub.dev for the latest version
