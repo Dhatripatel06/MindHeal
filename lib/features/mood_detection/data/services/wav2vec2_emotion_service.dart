@@ -8,10 +8,6 @@ import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_
 // --- FIX 1: The correct import ---
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 
-// --- FIX 2: Remove path_provider imports, they are not needed ---
-// import 'package:path_provider/path_provider.dart';
-// import 'package:flutter/foundation.dart' show kIsWeb;
-
 class Wav2Vec2EmotionService {
   OrtSession? _session;
   List<String>? _labels;
@@ -25,9 +21,6 @@ class Wav2Vec2EmotionService {
   Wav2Vec2EmotionService._internal();
   // --- END SINGLETON ---
 
-  // --- FIX 3: This method is no longer needed ---
-  // Future<String> _getModelPath() async { ... }
-
   Future<void> initialize() async {
     if (_isInitialized) {
       print("Wav2Vec2EmotionService already initialized.");
@@ -35,7 +28,8 @@ class Wav2Vec2EmotionService {
     }
 
     try {
-      // --- FIX 4: Load session directly from asset ---
+      // --- FIX 2: Load session directly from asset ---
+      // This is the correct way and matches your working image service
       final ort = OnnxRuntime();
       _session = await ort.createSessionFromAsset(
           'assets/models/wav2vec2_superb_er.onnx');
@@ -88,11 +82,12 @@ class Wav2Vec2EmotionService {
 
       final shape = [1, audioFloats.length];
 
-      // --- FIX 5: Use correct API for tensor creation ---
+      // --- FIX 3: Use correct API for tensor creation ---
       inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
 
       final inputs = {'input': inputTensor};
-      // --- FIX 6: Use correct API for run ---
+      
+      // --- FIX 4: Use correct API for run ---
       outputs = await _session!.run(inputs);
 
       if (outputs == null || outputs.isEmpty || outputs['logits'] == null) {
@@ -100,7 +95,7 @@ class Wav2Vec2EmotionService {
             "Model output is null or empty, or 'logits' key is missing");
       }
 
-      // --- FIX 7: Use correct API for getting output ---
+      // --- FIX 5: Use correct API for getting output ---
       final outputValue = await outputs['logits']!.asList();
       if (outputValue == null || (outputValue as List).isEmpty) {
         throw Exception("Model output 'logits' is null or empty");
@@ -112,6 +107,7 @@ class Wav2Vec2EmotionService {
       double maxScore = -double.infinity;
       int maxIndex = -1;
 
+      // Apply softmax
       final expScores = scores.map((s) => exp(s)).toList();
       final sumExpScores = expScores.reduce((a, b) => a + b);
       final probabilities = expScores.map((s) => s / sumExpScores).toList();
@@ -141,7 +137,7 @@ class Wav2Vec2EmotionService {
       print("Error during Wav2Vec2 inference: $e");
       return fallbackResult;
     } finally {
-      // --- FIX 8: Remove all .release() calls ---
+      // --- FIX 6: Remove all .release() calls ---
       // This package does not use manual .release()
     }
   }
