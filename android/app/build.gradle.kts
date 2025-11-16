@@ -146,8 +146,8 @@ dependencies {
     
     // Bluetooth support
     implementation("androidx.bluetooth:bluetooth:1.0.0-alpha02")
-    implementation("com.google.android.wear:wear:2.8.1")
-    
+    // ADD THIS LINE INSTEAD
+    implementation("com.google.android.support:wearable:2.8.1")    
     
     // Health and sensors
     implementation("androidx.health.connect:connect-client:1.1.0-alpha08")
