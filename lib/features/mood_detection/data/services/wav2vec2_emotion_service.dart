@@ -4,7 +4,13 @@ import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
+
+// --- FIX 1: The correct import ---
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
+
+// --- FIX 2: Remove path_provider imports, they are not needed ---
+// import 'package:path_provider/path_provider.dart';
+// import 'package:flutter/foundation.dart' show kIsWeb;
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -19,21 +25,22 @@ class Wav2Vec2EmotionService {
   Wav2Vec2EmotionService._internal();
   // --- END SINGLETON ---
 
+  // --- FIX 3: This method is no longer needed ---
+  // Future<String> _getModelPath() async { ... }
+
   Future<void> initialize() async {
-    // Only initialize if it hasn't been already
     if (_isInitialized) {
       print("Wav2Vec2EmotionService already initialized.");
       return;
     }
-    try {
-      // --- FIX 1: New initialization logic ---
-      final ort = OnnxRuntime();
-      final modelData =
-          await rootBundle.load('assets/models/wav2vec2_superb_er.onnx');
-      _session =
-          await ort.createSessionFromBuffer(modelData.buffer.asUint8List());
 
-      // --- FIX 3: Corrected the label file path ---
+    try {
+      // --- FIX 4: Load session directly from asset ---
+      final ort = OnnxRuntime();
+      _session = await ort.createSessionFromAsset(
+          'assets/models/wav2vec2_superb_er.onnx');
+
+      // Load labels (this was already correct)
       final labelsData =
           await rootBundle.loadString('assets/models/audio_emotion_labels.txt');
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
@@ -42,19 +49,16 @@ class Wav2Vec2EmotionService {
       print("Wav2Vec2EmotionService Initialized. Labels: $_labels");
     } catch (e) {
       print("Error initializing Wav2Vec2 service: $e");
-      _isInitialized = false; // Ensure it's false on error
+      _isInitialized = false;
     }
   }
 
-  /// Analyzes a 16kHz PCM audio file and returns an EmotionResult.
   Future<EmotionResult> analyzeAudio(File audioFile) async {
-    // Check initialization status
     if (!_isInitialized || _session == null || _labels == null) {
       print("Wav2Vec2 service not initialized. Call initialize() from main.dart");
-      // Try to initialize again just in case, but this is a fallback
       await initialize();
       if (!_isInitialized || _session == null || _labels == null) {
-         return EmotionResult.error("Wav2Vec2 model is not ready.");
+        return EmotionResult.error("Wav2Vec2 model is not ready.");
       }
     }
 
@@ -70,9 +74,7 @@ class Wav2Vec2EmotionService {
     Map<String, OrtValue>? outputs;
 
     try {
-      // 1. Read audio data
       final audioBytes = await audioFile.readAsBytes();
-
       final pcm16 = audioBytes.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
       for (int i = 0; i < pcm16.length; i++) {
@@ -84,38 +86,32 @@ class Wav2Vec2EmotionService {
         return fallbackResult;
       }
 
-      // 2. Prepare model input
       final shape = [1, audioFloats.length];
-      
-      // --- FIX 1: New tensor creation logic ---
+
+      // --- FIX 5: Use correct API for tensor creation ---
       inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
 
-      // --- FIX 1: New run logic ---
-      // Your model structure shows the input name is 'input'
       final inputs = {'input': inputTensor};
+      // --- FIX 6: Use correct API for run ---
       outputs = await _session!.run(inputs);
 
-      // 4. Process output
       if (outputs == null || outputs.isEmpty || outputs['logits'] == null) {
-        throw Exception("Model output is null or empty, or 'logits' key is missing");
+        throw Exception(
+            "Model output is null or empty, or 'logits' key is missing");
       }
 
-      // --- FIX 1: New output processing logic ---
-      // Your model structure shows 'logits' is [1, 4]
-      // so asList() will return a List<List<dynamic>>
+      // --- FIX 7: Use correct API for getting output ---
       final outputValue = await outputs['logits']!.asList();
       if (outputValue == null || (outputValue as List).isEmpty) {
-         throw Exception("Model output 'logits' is null or empty");
+        throw Exception("Model output 'logits' is null or empty");
       }
 
-      // Get the first (and only) batch, and cast scores to double
       final scores = (outputValue as List).first.cast<double>();
 
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
 
-      // Apply softmax to get probabilities
       final expScores = scores.map((s) => exp(s)).toList();
       final sumExpScores = expScores.reduce((a, b) => a + b);
       final probabilities = expScores.map((s) => s / sumExpScores).toList();
@@ -145,9 +141,8 @@ class Wav2Vec2EmotionService {
       print("Error during Wav2Vec2 inference: $e");
       return fallbackResult;
     } finally {
-      // --- FIX 1: New release logic ---
-      inputTensor?.release();
-      outputs?.values.forEach((o) => o.release());
+      // --- FIX 8: Remove all .release() calls ---
+      // This package does not use manual .release()
     }
   }
 }
