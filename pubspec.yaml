@@ -61,7 +61,7 @@ dependencies:
   
   # Bluetooth & Watch Connectivity
   flutter_blue_plus: ^1.14.5
-  wear: ^1.1.0
+  
   
   # Utilities
   intl: ^0.18.1

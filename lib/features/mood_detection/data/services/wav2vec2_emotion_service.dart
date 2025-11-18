@@ -4,22 +4,38 @@ import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
-
-// --- This is the correct import ---
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
+import 'package:path_provider/path_provider.dart'; // Make sure you have path_provider in pubspec.yaml
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
   List<String>? _labels;
   bool _isInitialized = false;
 
-  // --- START SINGLETON ---
+  // --- SINGLETON ---
   static final Wav2Vec2EmotionService _instance =
       Wav2Vec2EmotionService._internal();
   factory Wav2Vec2EmotionService() => _instance;
   static Wav2Vec2EmotionService get instance => _instance;
   Wav2Vec2EmotionService._internal();
-  // --- END SINGLETON ---
+
+  /// Helper: Copy asset to a real file on the device
+  Future<String> _copyAssetToFile(String assetPath) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final fileName = assetPath.split('/').last;
+    final file = File('${directory.path}/$fileName');
+
+    // If file doesn't exist or is empty, copy it
+    if (!await file.exists() || await file.length() == 0) {
+      print("Copying model to ${file.path}...");
+      final byteData = await rootBundle.load(assetPath);
+      await file.writeAsBytes(byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      ));
+    }
+    return file.path;
+  }
 
   Future<void> initialize() async {
     if (_isInitialized) {
@@ -28,31 +44,36 @@ class Wav2Vec2EmotionService {
     }
 
     try {
-      // --- THIS IS THE FIX: Load session directly from asset ---
-      // This is the correct way and matches your working image service
+      print("🚀 Initializing Wav2Vec2EmotionService...");
+      
+      // 1. Initialize environment
       final ort = OnnxRuntime();
-      _session = await ort.createSessionFromAsset(
-          'assets/models/wav2vec2_superb_er.onnx');
 
-      // Load labels
+      // 2. Copy model from assets to a real file path
+      final modelPath = await _copyAssetToFile('assets/models/wav2vec2_superb_er.onnx');
+      
+      // 3. Create session from that file path
+      _session = await ort.createSessionFromPath(modelPath);
+
+      // 4. Load labels
       final labelsData =
           await rootBundle.loadString('assets/models/audio_emotion_labels.txt');
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
 
       _isInitialized = true;
-      print("Wav2Vec2EmotionService Initialized. Labels: $_labels");
+      print("✅ Wav2Vec2EmotionService Initialized. Labels: $_labels");
     } catch (e) {
-      print("Error initializing Wav2Vec2 service: $e");
+      print("❌ Error initializing Wav2Vec2 service: $e");
       _isInitialized = false;
     }
   }
 
   Future<EmotionResult> analyzeAudio(File audioFile) async {
     if (!_isInitialized || _session == null || _labels == null) {
-      print("Wav2Vec2 service not initialized. Call initialize() from main.dart");
+      print("Wav2Vec2 service not initialized. Attempting to initialize...");
       await initialize();
-      if (!_isInitialized || _session == null || _labels == null) {
-        return EmotionResult.error("Wav2Vec2 model is not ready.");
+      if (!_isInitialized || _session == null) {
+        return EmotionResult.error("Wav2Vec2 model failed to load.");
       }
     }
 
@@ -68,6 +89,7 @@ class Wav2Vec2EmotionService {
     Map<String, OrtValue>? outputs;
 
     try {
+      // Read and process audio
       final audioBytes = await audioFile.readAsBytes();
       final pcm16 = audioBytes.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
@@ -76,34 +98,32 @@ class Wav2Vec2EmotionService {
       }
 
       if (audioFloats.isEmpty) {
-        print("Audio file is empty, returning fallback.");
+        print("Audio file is empty.");
         return fallbackResult;
       }
 
       final shape = [1, audioFloats.length];
-
       inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
 
       final inputs = {'input': inputTensor};
       outputs = await _session!.run(inputs);
 
-      if (outputs == null || outputs.isEmpty || outputs['logits'] == null) {
-        throw Exception(
-            "Model output is null or empty, or 'logits' key is missing");
+      if (outputs == null || outputs.isEmpty) {
+        throw Exception("Model returned empty output");
       }
 
-      final outputValue = await outputs['logits']!.asList();
-      if (outputValue == null || (outputValue as List).isEmpty) {
-        throw Exception("Model output 'logits' is null or empty");
-      }
-
+      // Handle output - assuming 'logits' is the output name
+      // You can check _session!.outputNames to be sure
+      final outputKey = _session!.outputNames.first;
+      final outputValue = await outputs[outputKey]!.asList();
+      
       final scores = (outputValue as List).first.cast<double>();
 
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
 
-      // Apply softmax
+      // Softmax
       final expScores = scores.map((s) => exp(s)).toList();
       final sumExpScores = expScores.reduce((a, b) => a + b);
       final probabilities = expScores.map((s) => s / sumExpScores).toList();
@@ -133,5 +153,6 @@ class Wav2Vec2EmotionService {
       print("Error during Wav2Vec2 inference: $e");
       return fallbackResult;
     }
+    // Note: flutter_onnxruntime manages memory automatically for basic tensors
   }
 }
