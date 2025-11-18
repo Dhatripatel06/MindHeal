@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter/return_code.dart';
+
+// --- FIX 1: Correct FFmpeg Imports for your package ---
+import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -21,27 +23,6 @@ class Wav2Vec2EmotionService {
   static Wav2Vec2EmotionService get instance => _instance;
   Wav2Vec2EmotionService._internal();
 
-  /// Copies the asset to a local file so the C++ ONNX runtime can load it.
-  Future<String> _copyAssetToFile(String assetPath) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final fileName = assetPath.split('/').last;
-    final file = File('${directory.path}/$fileName');
-
-    // Always overwrite to ensure we use the latest model version
-    if (await file.exists()) {
-      await file.delete();
-    }
-
-    print("📦 Copying model to storage: ${file.path}...");
-    final byteData = await rootBundle.load(assetPath);
-    await file.writeAsBytes(byteData.buffer.asUint8List(
-      byteData.offsetInBytes,
-      byteData.lengthInBytes,
-    ), flush: true);
-    
-    return file.path;
-  }
-
   Future<void> initialize() async {
     if (_isInitialized) return;
 
@@ -49,14 +30,12 @@ class Wav2Vec2EmotionService {
       print("🚀 Initializing Wav2Vec2EmotionService...");
       
       final ort = OnnxRuntime();
-
-      // --- FIX: Load the NEW optimized single-file model ---
-      final modelPath = await _copyAssetToFile('assets/models/wav2vec2_emotion_fp16.onnx');
       
-      // Create session from the physical file
-      _session = await ort.createSession(modelPath);
+      // --- FIX 2: Load the optimized single-file model directly from assets ---
+      // (Ensure 'wav2vec2_emotion.onnx' is in your assets/models/ folder)
+      _session = await ort.createSessionFromAsset('assets/models/wav2vec2_emotion.onnx');
 
-      // Load labels
+      // Load Labels
       final labelsData =
           await rootBundle.loadString('assets/models/audio_emotion_labels.txt');
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
@@ -69,7 +48,7 @@ class Wav2Vec2EmotionService {
     }
   }
 
-  /// Converts input audio/video to 16kHz Mono WAV for the model
+  /// Converts ANY audio/video file to 16kHz Mono WAV
   Future<File?> _convertToCompatibleWav(File inputFile) async {
     try {
       final tempDir = await getTemporaryDirectory();
@@ -80,16 +59,25 @@ class Wav2Vec2EmotionService {
         await outputFile.delete();
       }
 
-      // FFmpeg: Convert to PCM 16-bit, 16000Hz, Mono
+      print("🔄 Converting ${inputFile.path}...");
+
+      // FFmpeg command:
+      // -y : Overwrite
+      // -i : Input
+      // -vn : No video
+      // -acodec pcm_s16le : 16-bit Raw PCM
+      // -ar 16000 : 16k Sample Rate
+      // -ac 1 : Mono
       final command = '-y -i "${inputFile.path}" -vn -acodec pcm_s16le -ar 16000 -ac 1 "$outputPath"';
-      
+
       final session = await FFmpegKit.execute(command);
       final returnCode = await session.getReturnCode();
 
       if (ReturnCode.isSuccess(returnCode)) {
+        print("✅ Audio conversion successful");
         return outputFile;
       } else {
-        print("❌ FFmpeg Error: ${await session.getLogsAsString()}");
+        print("❌ Audio conversion failed. Logs: ${await session.getLogsAsString()}");
         return null;
       }
     } catch (e) {
@@ -101,49 +89,58 @@ class Wav2Vec2EmotionService {
   Future<EmotionResult> analyzeAudio(File rawFile) async {
     if (!_isInitialized || _session == null) {
       await initialize();
-      if (!_isInitialized) return EmotionResult.error("Model failed to initialize.");
+      if (!_isInitialized) return EmotionResult.error("Model not ready.");
     }
 
     // 1. Convert file to WAV
     File? audioFile = await _convertToCompatibleWav(rawFile);
-    if (audioFile == null) return EmotionResult.error("Audio conversion failed.");
+    
+    if (audioFile == null) {
+       return EmotionResult.error("Could not convert audio file.");
+    }
 
     try {
       // 2. Read Bytes & Skip Header
       final audioBytes = await audioFile.readAsBytes();
-      if (audioBytes.length <= 44) return EmotionResult.error("Audio file empty.");
-
-      // 3. Normalize Audio
-      final pcmData = audioBytes.sublist(44); // Skip WAV header
+      // Skip standard WAV header (44 bytes)
+      if (audioBytes.length <= 44) return EmotionResult.error("Audio too short.");
+      
+      final pcmData = audioBytes.sublist(44);
       final pcm16 = pcmData.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
       
+      // 3. Normalize to [-1.0, 1.0]
       for (int i = 0; i < pcm16.length; i++) {
         audioFloats[i] = pcm16[i] / 32768.0;
       }
 
-      // 4. Inference
+      // 4. Run Inference
       final shape = [1, audioFloats.length];
       final inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
       final inputs = {'input': inputTensor};
       
       final outputs = await _session!.run(inputs);
 
-      if (outputs == null || outputs.isEmpty) throw Exception("Empty model output");
+      if (outputs == null || outputs.isEmpty) {
+        throw Exception("Model returned empty output");
+      }
 
-      // 5. Process Results
-      final outputList = await (outputs.values.first as OrtValue).asList();
-      final scoresList = outputList[0] as List; // First batch
-      final scores = scoresList.map((e) => (e as num).toDouble()).toList();
+      // 5. Process Output
+      // Get 'logits' (usually the first output)
+      final outputKey = _session!.outputNames.first;
+      // The plugin returns a list of batches
+      final outputValue = await outputs[outputKey]!.asList();
+      final firstBatch = outputValue[0] as List;
+      final scores = firstBatch.map((e) => (e as num).toDouble()).toList();
 
-      // Softmax
-      final expScores = scores.map((s) => exp(s)).toList();
-      final sumExpScores = expScores.reduce((a, b) => a + b);
-      final probabilities = expScores.map((s) => s / sumExpScores).toList();
-
+      // 6. Softmax & Result
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
+
+      final expScores = scores.map((s) => exp(s)).toList();
+      final sumExpScores = expScores.reduce((a, b) => a + b);
+      final probabilities = expScores.map((s) => s / sumExpScores).toList();
 
       for (int i = 0; i < probabilities.length; i++) {
         if (_labels != null && i < _labels!.length) {
@@ -165,10 +162,10 @@ class Wav2Vec2EmotionService {
         );
       }
       
-      return EmotionResult.error("Classification failed");
+      return EmotionResult.error("Could not classify emotion");
 
     } catch (e) {
-      print("❌ Inference Error: $e");
+      print("❌ Inference error: $e");
       return EmotionResult.error(e.toString());
     }
   }
