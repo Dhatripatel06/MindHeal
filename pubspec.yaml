@@ -134,7 +134,7 @@ flutter:
     - assets/audio/
     - assets/models/labels.txt
     - assets/models/enet_b0_8_best_afew.onnx
-    - assets/models/wav2vec2_emotion_fp16.onnx
+    - assets/models/wav2vec2_emotion.onnx
     - assets/models/audio_emotion_labels.txt
     - assets/animations/
     - .env
