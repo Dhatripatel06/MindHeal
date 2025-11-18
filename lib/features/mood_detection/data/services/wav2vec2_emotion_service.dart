@@ -5,7 +5,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 
-// --- FIX 1: The correct import ---
+// --- This is the correct import ---
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 
 class Wav2Vec2EmotionService {
@@ -28,13 +28,13 @@ class Wav2Vec2EmotionService {
     }
 
     try {
-      // --- FIX 2: Load session directly from asset ---
+      // --- THIS IS THE FIX: Load session directly from asset ---
       // This is the correct way and matches your working image service
       final ort = OnnxRuntime();
       _session = await ort.createSessionFromAsset(
           'assets/models/wav2vec2_superb_er.onnx');
 
-      // Load labels (this was already correct)
+      // Load labels
       final labelsData =
           await rootBundle.loadString('assets/models/audio_emotion_labels.txt');
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
@@ -82,12 +82,9 @@ class Wav2Vec2EmotionService {
 
       final shape = [1, audioFloats.length];
 
-      // --- FIX 3: Use correct API for tensor creation ---
       inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
 
       final inputs = {'input': inputTensor};
-      
-      // --- FIX 4: Use correct API for run ---
       outputs = await _session!.run(inputs);
 
       if (outputs == null || outputs.isEmpty || outputs['logits'] == null) {
@@ -95,7 +92,6 @@ class Wav2Vec2EmotionService {
             "Model output is null or empty, or 'logits' key is missing");
       }
 
-      // --- FIX 5: Use correct API for getting output ---
       final outputValue = await outputs['logits']!.asList();
       if (outputValue == null || (outputValue as List).isEmpty) {
         throw Exception("Model output 'logits' is null or empty");
@@ -136,9 +132,6 @@ class Wav2Vec2EmotionService {
     } catch (e) {
       print("Error during Wav2Vec2 inference: $e");
       return fallbackResult;
-    } finally {
-      // --- FIX 6: Remove all .release() calls ---
-      // This package does not use manual .release()
     }
   }
 }

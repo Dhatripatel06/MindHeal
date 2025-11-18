@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.mentalwellness.app">
 
-    <uses-library android:name="com.google.android.wearable" android:required="false" />
+    
      <!-- Camera and Flash Permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FLASHLIGHT" />
@@ -42,7 +42,8 @@
         android:label="MindHeal"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme">
-
+        
+        <uses-library android:name="com.google.android.wearable" android:required="false" />
         <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
