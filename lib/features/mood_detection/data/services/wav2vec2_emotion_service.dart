@@ -7,9 +7,9 @@ import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 
-// --- FIX 1: Correct FFmpeg Imports for your package ---
-import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
+// --- TEMPORARY: Removed FFmpeg imports to fix build ---
+// import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
+// import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -31,8 +31,7 @@ class Wav2Vec2EmotionService {
       
       final ort = OnnxRuntime();
       
-      // --- FIX 2: Load the optimized single-file model directly from assets ---
-      // (Ensure 'wav2vec2_emotion.onnx' is in your assets/models/ folder)
+      // Load the model from assets
       _session = await ort.createSessionFromAsset('assets/models/wav2vec2_emotion.onnx');
 
       // Load Labels
@@ -48,42 +47,11 @@ class Wav2Vec2EmotionService {
     }
   }
 
-  /// Converts ANY audio/video file to 16kHz Mono WAV
+  /// Temporary Bypass: Just return the file as-is.
+  /// When JitPack servers are fixed, we can add FFmpeg back.
   Future<File?> _convertToCompatibleWav(File inputFile) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final outputPath = '${tempDir.path}/processed_audio.wav';
-      final outputFile = File(outputPath);
-
-      if (await outputFile.exists()) {
-        await outputFile.delete();
-      }
-
-      print("🔄 Converting ${inputFile.path}...");
-
-      // FFmpeg command:
-      // -y : Overwrite
-      // -i : Input
-      // -vn : No video
-      // -acodec pcm_s16le : 16-bit Raw PCM
-      // -ar 16000 : 16k Sample Rate
-      // -ac 1 : Mono
-      final command = '-y -i "${inputFile.path}" -vn -acodec pcm_s16le -ar 16000 -ac 1 "$outputPath"';
-
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-
-      if (ReturnCode.isSuccess(returnCode)) {
-        print("✅ Audio conversion successful");
-        return outputFile;
-      } else {
-        print("❌ Audio conversion failed. Logs: ${await session.getLogsAsString()}");
-        return null;
-      }
-    } catch (e) {
-      print("❌ Conversion Exception: $e");
-      return null;
-    }
+    print("⚠️ FFmpeg disabled: Skipping conversion. Assuming file is valid WAV.");
+    return inputFile;
   }
 
   Future<EmotionResult> analyzeAudio(File rawFile) async {
@@ -92,27 +60,29 @@ class Wav2Vec2EmotionService {
       if (!_isInitialized) return EmotionResult.error("Model not ready.");
     }
 
-    // 1. Convert file to WAV
+    // 1. Get File (Conversion skipped)
     File? audioFile = await _convertToCompatibleWav(rawFile);
     
-    if (audioFile == null) {
-       return EmotionResult.error("Could not convert audio file.");
-    }
-
     try {
-      // 2. Read Bytes & Skip Header
-      final audioBytes = await audioFile.readAsBytes();
-      // Skip standard WAV header (44 bytes)
+      // 2. Read Bytes
+      final audioBytes = await audioFile!.readAsBytes();
+      
+      // Basic check for WAV header
       if (audioBytes.length <= 44) return EmotionResult.error("Audio too short.");
       
+      // 3. Parse PCM Data
+      // This assumes 16kHz Mono WAV input (standard for app recordings)
+      // If you upload an MP3/MP4 manually, this might fail or give noise results
+      // until we can add FFmpeg back.
       final pcmData = audioBytes.sublist(44);
       final pcm16 = pcmData.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
       
-      // 3. Normalize to [-1.0, 1.0]
       for (int i = 0; i < pcm16.length; i++) {
         audioFloats[i] = pcm16[i] / 32768.0;
       }
+
+      if (audioFloats.isEmpty) return EmotionResult.error("Empty audio data.");
 
       // 4. Run Inference
       final shape = [1, audioFloats.length];
@@ -126,10 +96,8 @@ class Wav2Vec2EmotionService {
       }
 
       // 5. Process Output
-      // Get 'logits' (usually the first output)
       final outputKey = _session!.outputNames.first;
-      // The plugin returns a list of batches
-      final outputValue = await outputs[outputKey]!.asList();
+      final outputValue = await (outputs[outputKey] as OrtValue).asList();
       final firstBatch = outputValue[0] as List;
       final scores = firstBatch.map((e) => (e as num).toDouble()).toList();
 
@@ -166,7 +134,7 @@ class Wav2Vec2EmotionService {
 
     } catch (e) {
       print("❌ Inference error: $e");
-      return EmotionResult.error(e.toString());
+      return EmotionResult.error("Analysis failed: ${e.toString()}");
     }
   }
 }

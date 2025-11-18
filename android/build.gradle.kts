@@ -1,19 +1,17 @@
+// android/build.gradle.kts
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 
 buildscript {
     repositories {
         google()
         mavenCentral()
-       
+        // Optional mirror if standard repos are slow/blocked
         maven { setUrl("https://maven.aliyun.com/repository/public") }
-        
     }
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.0")
         classpath(kotlin("gradle-plugin", version = "2.0.21"))
-
-        
+        classpath("com.google.gms:google-services:4.4.2") 
     }
 }
 
@@ -22,9 +20,10 @@ allprojects {
         google()
         mavenCentral()
         maven("https://jitpack.io")
+        // Optional mirror
+        maven { setUrl("https://maven.aliyun.com/repository/public") }
     }
 }
-
 
 rootProject.buildDir = file("../build")
 
@@ -32,9 +31,9 @@ subprojects {
     project.buildDir = file("${rootProject.buildDir}/${project.name}")
 }
 
- tasks.withType<JavaCompile> {
-    options.compilerArgs.addAll(listOf("-Xlint:none", "-nowarn"))
-}
+// --- FIX: Apply the namespace fix script ---
+// This prevents the "Unresolved reference: android" error
+apply(from = "namespace_fix.gradle")
 
 tasks.register<Delete>("clean") {
     delete(rootProject.buildDir)
@@ -45,8 +44,8 @@ tasks.withType<KotlinCompile>().configureEach {
         jvmTarget = "17"
     }
 }
+
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(17)
+    options.compilerArgs.addAll(listOf("-Xlint:none", "-nowarn"))
 }
-
-
