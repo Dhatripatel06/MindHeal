@@ -112,7 +112,7 @@ dependencies:
   
   # Notifications
   flutter_local_notifications: ^19.4.1
-
+  ffmpeg_kit_flutter_min_gpl: ^4.5.1
 
 
   sqflite: ^2.3.0
