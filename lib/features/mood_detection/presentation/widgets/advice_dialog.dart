@@ -5,8 +5,13 @@ import '../../../../core/services/gemini_adviser_service.dart';
 
 class AdviceDialog extends StatefulWidget {
   final EmotionResult emotionResult;
+  final String? userSpeech;
 
-  const AdviceDialog({super.key, required this.emotionResult});
+  const AdviceDialog({
+    super.key,
+    required this.emotionResult,
+    this.userSpeech,
+  });
 
   @override
   State<AdviceDialog> createState() => _AdviceDialogState();
@@ -60,68 +65,37 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   Future<void> _initializeTts() async {
     try {
-      // Wait for TTS engine to be available
       await Future.delayed(const Duration(milliseconds: 1000));
-
-      // Check if TTS is available
       var engines = await _flutterTts.getEngines;
-      if (engines.isEmpty) {
-        print('No TTS engines available');
-        return;
-      }
+      if (engines.isEmpty) return;
 
-      // Initialize TTS settings
       await _flutterTts.setVolume(0.8);
       await _flutterTts.setSpeechRate(0.5);
       await _flutterTts.setPitch(1.0);
 
-      // Set default language and check availability
       var isAvailable = await _flutterTts.isLanguageAvailable('en-US');
       if (isAvailable == true) {
         await _flutterTts.setLanguage('en-US');
       }
 
       _flutterTts.setStartHandler(() {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = true;
-            _isPaused = false;
-          });
-        }
+        if (mounted) setState(() { _isSpeaking = true; _isPaused = false; });
       });
 
       _flutterTts.setCompletionHandler(() {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = false;
-            _isPaused = false;
-          });
-        }
+        if (mounted) setState(() { _isSpeaking = false; _isPaused = false; });
       });
 
       _flutterTts.setPauseHandler(() {
-        if (mounted) {
-          setState(() {
-            _isPaused = true;
-          });
-        }
+        if (mounted) setState(() { _isPaused = true; });
       });
 
       _flutterTts.setContinueHandler(() {
-        if (mounted) {
-          setState(() {
-            _isPaused = false;
-          });
-        }
+        if (mounted) setState(() { _isPaused = false; });
       });
 
       _flutterTts.setErrorHandler((msg) {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = false;
-            _isPaused = false;
-          });
-        }
+        if (mounted) setState(() { _isSpeaking = false; _isPaused = false; });
       });
     } catch (e) {
       print('TTS Initialization Error: $e');
@@ -130,11 +104,7 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   @override
   void dispose() {
-    try {
-      _flutterTts.stop();
-    } catch (e) {
-      print('TTS Dispose Error: $e');
-    }
+    try { _flutterTts.stop(); } catch (e) { print('TTS Dispose Error: $e'); }
     _animationController.dispose();
     super.dispose();
   }
@@ -146,11 +116,23 @@ class _AdviceDialogState extends State<AdviceDialog>
     });
 
     try {
-      final advice = await _adviserService.getEmotionalAdvice(
-        detectedEmotion: widget.emotionResult.emotion,
-        confidence: widget.emotionResult.confidence,
-        language: _selectedLanguage,
-      );
+      String advice;
+      
+      // --- FRIEND LOGIC: Use user speech if available ---
+      if (widget.userSpeech != null && widget.userSpeech!.isNotEmpty && !widget.userSpeech!.startsWith("(")) {
+         advice = await _adviserService.getConversationalAdvice(
+          userSpeech: widget.userSpeech!,
+          detectedEmotion: widget.emotionResult.emotion,
+          language: _selectedLanguage,
+        );
+      } else {
+        // Default analysis logic
+        advice = await _adviserService.getEmotionalAdvice(
+          detectedEmotion: widget.emotionResult.emotion,
+          confidence: widget.emotionResult.confidence,
+          language: _selectedLanguage,
+        );
+      }
 
       setState(() {
         _advice = advice;
@@ -177,7 +159,6 @@ class _AdviceDialogState extends State<AdviceDialog>
     if (_advice == null || _advice!.isEmpty) return;
 
     try {
-      // Check if TTS engine is available before trying to use it
       var engines = await _flutterTts.getEngines;
       if (engines.isEmpty) {
         _showTtsNotAvailableMessage();
@@ -186,28 +167,19 @@ class _AdviceDialogState extends State<AdviceDialog>
 
       await _flutterTts.stop();
 
-      // Set language for TTS and check if it's available
       String languageCode = _getLanguageCode(_selectedLanguage);
       var isAvailable = await _flutterTts.isLanguageAvailable(languageCode);
 
       if (isAvailable == true) {
         await _flutterTts.setLanguage(languageCode);
       } else {
-        // Fallback to English if selected language is not available
         await _flutterTts.setLanguage('en-US');
       }
 
-      // Wait a bit for TTS to be ready
       await Future.delayed(const Duration(milliseconds: 200));
-
-      var result = await _flutterTts.speak(_advice!);
-      if (result == 0) {
-        // Speech started successfully
-        print('TTS started successfully');
-      }
+      await _flutterTts.speak(_advice!);
     } catch (e) {
       print('TTS Speak Error: $e');
-      // Only show error dialog if we haven't already shown one recently
       if (mounted && !_isSpeaking) {
         _showTtsNotAvailableMessage();
       }
@@ -220,9 +192,7 @@ class _AdviceDialogState extends State<AdviceDialog>
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
                 Icon(Icons.warning, color: Colors.orange.shade600),
@@ -230,17 +200,11 @@ class _AdviceDialogState extends State<AdviceDialog>
                 const Text('TTS Not Available'),
               ],
             ),
-            content: const Text(
-              'Text-to-speech is not available. Please install Google TTS or enable speech services on your device.',
-              style: TextStyle(fontSize: 14),
-            ),
+            content: const Text('Text-to-speech is not available.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  'OK',
-                  style: TextStyle(color: Colors.orange.shade600),
-                ),
+                child: Text('OK', style: TextStyle(color: Colors.orange.shade600)),
               ),
             ],
           );
@@ -251,12 +215,6 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   Future<void> _pauseResumeSpeech() async {
     try {
-      var engines = await _flutterTts.getEngines;
-      if (engines.isEmpty) {
-        _showTtsNotAvailableMessage();
-        return;
-      }
-
       if (_isSpeaking && !_isPaused) {
         await _flutterTts.pause();
       } else if (_isPaused) {
@@ -264,7 +222,6 @@ class _AdviceDialogState extends State<AdviceDialog>
       }
     } catch (e) {
       print('TTS Pause/Resume Error: $e');
-      _showTtsNotAvailableMessage();
     }
   }
 
@@ -278,13 +235,9 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   String _getLanguageCode(String language) {
     switch (language) {
-      case 'हिंदी':
-        return 'hi-IN';
-      case 'ગુજરાતી':
-        return 'gu-IN';
-      case 'English':
-      default:
-        return 'en-US';
+      case 'हिंदी': return 'hi-IN';
+      case 'ગુજરાતી': return 'gu-IN';
+      case 'English': default: return 'en-US';
     }
   }
 
@@ -347,11 +300,7 @@ class _AdviceDialogState extends State<AdviceDialog>
                   color: Colors.white.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.psychology_outlined,
-                  color: Colors.white,
-                  size: 28,
-                ),
+                child: const Icon(Icons.psychology_outlined, color: Colors.white, size: 28),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -359,19 +308,12 @@ class _AdviceDialogState extends State<AdviceDialog>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'MindHeal Adviser',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      'MindHeal Friend',
+                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Personalized guidance for ${widget.emotionResult.emotion.toLowerCase()} mood',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 14,
-                      ),
+                      'Personalized guidance',
+                      style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
                     ),
                   ],
                 ),
@@ -380,10 +322,7 @@ class _AdviceDialogState extends State<AdviceDialog>
                 onTap: () => Navigator.of(context).pop(),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                   child: const Icon(Icons.close, color: Colors.white, size: 20),
                 ),
               ),
@@ -428,9 +367,7 @@ class _AdviceDialogState extends State<AdviceDialog>
                       child: Text(
                         lang['name']!,
                         style: TextStyle(
-                          color: isSelected
-                              ? Colors.purple.shade600
-                              : Colors.white,
+                          color: isSelected ? Colors.purple.shade600 : Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -468,26 +405,17 @@ class _AdviceDialogState extends State<AdviceDialog>
       decoration: BoxDecoration(
         color: _getEmotionColor(widget.emotionResult.emotion).withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _getEmotionColor(
-            widget.emotionResult.emotion,
-          ).withOpacity(0.3),
-        ),
+        border: Border.all(color: _getEmotionColor(widget.emotionResult.emotion).withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _getEmotionColor(
-                widget.emotionResult.emotion,
-              ).withOpacity(0.2),
+              color: _getEmotionColor(widget.emotionResult.emotion).withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: Text(
-              _getEmotionEmoji(widget.emotionResult.emotion),
-              style: const TextStyle(fontSize: 32),
-            ),
+            child: Text(_getEmotionEmoji(widget.emotionResult.emotion), style: const TextStyle(fontSize: 32)),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -497,19 +425,14 @@ class _AdviceDialogState extends State<AdviceDialog>
                 Text(
                   _getLocalizedEmotion(widget.emotionResult.emotion),
                   style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20, fontWeight: FontWeight.bold,
                     color: _getEmotionColor(widget.emotionResult.emotion),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${(widget.emotionResult.confidence * 100).toInt()}% ${_getLocalizedText('confidence')}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -520,44 +443,22 @@ class _AdviceDialogState extends State<AdviceDialog>
   }
 
   Widget _buildAdviceSection() {
-    if (_isLoading) {
-      return _buildLoadingState();
-    }
-
-    if (_error != null) {
-      return _buildErrorState();
-    }
-
-    if (_advice != null) {
-      return _buildAdviceContent();
-    }
-
+    if (_isLoading) return _buildLoadingState();
+    if (_error != null) return _buildErrorState();
+    if (_advice != null) return _buildAdviceContent();
     return const SizedBox.shrink();
   }
 
   Widget _buildLoadingState() {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
-          Text(
-            _getLocalizedText('gettingAdvice'),
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.blue.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          Text(
-            _getLocalizedText('pleaseWait'),
-            style: TextStyle(fontSize: 14, color: Colors.blue.shade600),
-          ),
+          Text(_getLocalizedText('gettingAdvice'), style: TextStyle(fontSize: 16, color: Colors.blue.shade700, fontWeight: FontWeight.w500)),
+          Text(_getLocalizedText('pleaseWait'), style: TextStyle(fontSize: 14, color: Colors.blue.shade600)),
         ],
       ),
     );
@@ -566,31 +467,16 @@ class _AdviceDialogState extends State<AdviceDialog>
   Widget _buildErrorState() {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.shade200),
-      ),
+      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.shade200)),
       child: Column(
         children: [
           Icon(Icons.error_outline, color: Colors.red.shade600, size: 48),
           const SizedBox(height: 12),
-          Text(
-            _getLocalizedText('adviceError'),
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.red.shade700,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          Text(_getLocalizedText('adviceError'), style: TextStyle(fontSize: 16, color: Colors.red.shade700, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _getAdvice,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade600, foregroundColor: Colors.white),
             child: Text(_getLocalizedText('tryAgain')),
           ),
         ],
@@ -611,38 +497,22 @@ class _AdviceDialogState extends State<AdviceDialog>
         children: [
           Row(
             children: [
-              Icon(
-                Icons.lightbulb_outline,
-                color: Colors.green.shade600,
-                size: 24,
-              ),
+              Icon(Icons.lightbulb_outline, color: Colors.green.shade600, size: 24),
               const SizedBox(width: 8),
-              Text(
-                _getLocalizedText('personalizedAdvice'),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade700,
-                ),
-              ),
+              Text(_getLocalizedText('personalizedAdvice'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            _advice!,
-            style: TextStyle(
-              fontSize: 16,
-              height: 1.6,
-              color: Colors.grey[800],
-            ),
-          ),
+          Text(_advice!, style: TextStyle(fontSize: 16, height: 1.6, color: Colors.grey[800])),
           const SizedBox(height: 16),
-          _buildSpeechControls(),
+          // THIS IS THE METHOD YOU WERE MISSING
+          _buildSpeechControls(), 
         ],
       ),
     );
   }
 
+  // --- THIS METHOD WAS MISSING IN YOUR CODE ---
   Widget _buildSpeechControls() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -657,27 +527,17 @@ class _AdviceDialogState extends State<AdviceDialog>
           const SizedBox(width: 8),
           Text(
             _getLocalizedText('readAloud'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.blue.shade700,
-            ),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.blue.shade700),
           ),
           const Spacer(),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildSpeechButton(
-                icon: _isSpeaking
-                    ? (_isPaused ? Icons.play_arrow : Icons.pause)
-                    : Icons.play_arrow,
+                icon: _isSpeaking ? (_isPaused ? Icons.play_arrow : Icons.pause) : Icons.play_arrow,
                 onPressed: _isSpeaking ? _pauseResumeSpeech : _speakAdvice,
                 color: Colors.blue,
-                tooltip: _isSpeaking
-                    ? (_isPaused
-                          ? _getLocalizedText('resume')
-                          : _getLocalizedText('pause'))
-                    : _getLocalizedText('play'),
+                tooltip: _isSpeaking ? (_isPaused ? _getLocalizedText('resume') : _getLocalizedText('pause')) : _getLocalizedText('play'),
               ),
               const SizedBox(width: 8),
               _buildSpeechButton(
@@ -693,6 +553,7 @@ class _AdviceDialogState extends State<AdviceDialog>
     );
   }
 
+  // --- THIS HELPER WAS ALSO MISSING ---
   Widget _buildSpeechButton({
     required IconData icon,
     required VoidCallback? onPressed,
@@ -707,16 +568,10 @@ class _AdviceDialogState extends State<AdviceDialog>
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: onPressed != null
-                ? color.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.1),
+            color: onPressed != null ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: onPressed != null ? color : Colors.grey,
-          ),
+          child: Icon(icon, size: 18, color: onPressed != null ? color : Colors.grey),
         ),
       ),
     );
@@ -724,46 +579,23 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   Widget _buildFooter() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24))),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           Expanded(
             child: OutlinedButton(
               onPressed: _getAdvice,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.purple.shade600,
-                side: BorderSide(color: Colors.purple.shade600),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.refresh, size: 18),
-                  const SizedBox(width: 8),
-                  Text(_getLocalizedText('newAdvice')),
-                ],
-              ),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.purple.shade600, side: BorderSide(color: Colors.purple.shade600), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.refresh, size: 18), const SizedBox(width: 8), Text(_getLocalizedText('newAdvice'))]),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton(
               onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple.shade600,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple.shade600, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               child: Text(_getLocalizedText('close')),
             ),
           ),
@@ -774,140 +606,45 @@ class _AdviceDialogState extends State<AdviceDialog>
 
   String _getLocalizedText(String key) {
     final texts = {
-      'English': {
-        'confidence': 'confidence',
-        'gettingAdvice': 'Getting personalized advice...',
-        'pleaseWait':
-            'Please wait while our AI counselor prepares guidance for you',
-        'adviceError': 'Unable to get advice at the moment',
-        'tryAgain': 'Try Again',
-        'personalizedAdvice': 'Personalized Advice',
-        'newAdvice': 'New Advice',
-        'close': 'Close',
-        'readAloud': 'Read Aloud',
-        'play': 'Play',
-        'pause': 'Pause',
-        'resume': 'Resume',
-        'stop': 'Stop',
-      },
-      'हिंदी': {
-        'confidence': 'विश्वास',
-        'gettingAdvice': 'व्यक्तिगत सलाह प्राप्त की जा रही है...',
-        'pleaseWait':
-            'कृपया प्रतीक्षा करें जबकि हमारा AI सलाहकार आपके लिए मार्गदर्शन तैयार करता है',
-        'adviceError': 'फिलहाल सलाह नहीं मिल पा रही है',
-        'tryAgain': 'फिर कोशिश करें',
-        'personalizedAdvice': 'व्यक्तिगत सलाह',
-        'newAdvice': 'नई सलाह',
-        'close': 'बंद करें',
-        'readAloud': 'जोर से पढ़ें',
-        'play': 'चलाएं',
-        'pause': 'रोकें',
-        'resume': 'जारी रखें',
-        'stop': 'बंद करें',
-      },
-      'ગુજરાતી': {
-        'confidence': 'વિશ્વાસ',
-        'gettingAdvice': 'વ્યક્તિગત સલાહ મેળવી રહ્યા છીએ...',
-        'pleaseWait':
-            'કૃપા કરીને રાહ જુઓ જ્યારે અમારો AI સલાહકાર તમારા માટે માર્ગદર્શન તૈયાર કરે છે',
-        'adviceError': 'હાલમાં સલાહ મેળવવામાં અસમર્થ',
-        'tryAgain': 'ફરી પ્રયાસ કરો',
-        'personalizedAdvice': 'વ્યક્તિગત સલાહ',
-        'newAdvice': 'નવી સલાહ',
-        'close': 'બંધ કરો',
-        'readAloud': 'મોટેથી વાંચો',
-        'play': 'ચલાવો',
-        'pause': 'થોભાવો',
-        'resume': 'ચાલુ રાખો',
-        'stop': 'બંધ કરો',
-      },
+      'English': {'confidence': 'confidence', 'gettingAdvice': 'Thinking about what you said...', 'pleaseWait': 'Analyzing your tone and words...', 'adviceError': 'Unable to get advice', 'tryAgain': 'Try Again', 'personalizedAdvice': 'My Thoughts', 'newAdvice': 'New Advice', 'close': 'Close', 'readAloud': 'Read Aloud', 'play': 'Play', 'pause': 'Pause', 'resume': 'Resume', 'stop': 'Stop'},
+      'हिंदी': {'confidence': 'विश्वास', 'gettingAdvice': 'आपकी बातों पर विचार कर रहा हूँ...', 'pleaseWait': 'आपके लहजे और शब्दों का विश्लेषण कर रहा हूँ...', 'adviceError': 'सलाह नहीं मिल पा रही है', 'tryAgain': 'फिर कोशिश करें', 'personalizedAdvice': 'मेरे विचार', 'newAdvice': 'नई सलाह', 'close': 'बंद करें', 'readAloud': 'जोर से पढ़ें', 'play': 'चलाएं', 'pause': 'रोकें', 'resume': 'जारी रखें', 'stop': 'बंद करें'},
+      'ગુજરાતી': {'confidence': 'વિશ્વાસ', 'gettingAdvice': 'તમે જે કહ્યું તેના પર વિચાર કરી રહ્યો છું...', 'pleaseWait': 'તમારા સ્વર અને શબ્દોનું વિશ્લેષણ કરી રહ્યો છું...', 'adviceError': 'સલાહ મેળવવામાં અસમર્થ', 'tryAgain': 'ફરી પ્રયાસ કરો', 'personalizedAdvice': 'મારા વિચારો', 'newAdvice': 'નવી સલાહ', 'close': 'બંધ કરો', 'readAloud': 'મોટેથી વાંચો', 'play': 'ચલાવો', 'pause': 'થોભાવો', 'resume': 'ચાલુ રાખો', 'stop': 'બંધ કરો'},
     };
-
     return texts[_selectedLanguage]?[key] ?? texts['English']![key]!;
   }
 
   String _getLocalizedEmotion(String emotion) {
     final emotions = {
-      'English': {
-        'happy': 'Happy',
-        'sad': 'Sad',
-        'angry': 'Angry',
-        'fear': 'Fearful',
-        'surprise': 'Surprised',
-        'disgust': 'Disgusted',
-        'neutral': 'Neutral',
-      },
-      'हिंदी': {
-        'happy': 'खुश',
-        'sad': 'उदास',
-        'angry': 'गुस्सैल',
-        'fear': 'डरा हुआ',
-        'surprise': 'आश्चर्यचकित',
-        'disgust': 'घृणित',
-        'neutral': 'तटस्थ',
-      },
-      'ગુજરાતી': {
-        'happy': 'ખુશ',
-        'sad': 'દુઃખી',
-        'angry': 'ગુસ્સે',
-        'fear': 'ડરેલો',
-        'surprise': 'આશ્ચર્યચકિત',
-        'disgust': 'અણગમતું',
-        'neutral': 'તટસ્થ',
-      },
+      'English': {'happy': 'Happy', 'sad': 'Sad', 'angry': 'Angry', 'fear': 'Fearful', 'surprise': 'Surprised', 'disgust': 'Disgusted', 'neutral': 'Neutral'},
+      'हिंदी': {'happy': 'खुश', 'sad': 'उदास', 'angry': 'गुस्सैल', 'fear': 'डरा हुआ', 'surprise': 'आश्चर्यचकित', 'disgust': 'घृणित', 'neutral': 'तटस्थ'},
+      'ગુજરાતી': {'happy': 'ખુશ', 'sad': 'દુઃખી', 'angry': 'ગુસ્સે', 'fear': 'ડરેલો', 'surprise': 'આશ્ચર્યચકિત', 'disgust': 'અણગમતું', 'neutral': 'તટस्थ'},
     };
-
-    return emotions[_selectedLanguage]?[emotion.toLowerCase()] ??
-        emotions['English']![emotion.toLowerCase()] ??
-        emotion;
+    return emotions[_selectedLanguage]?[emotion.toLowerCase()] ?? emotions['English']![emotion.toLowerCase()] ?? emotion;
   }
 
   String _getEmotionEmoji(String emotion) {
     switch (emotion.toLowerCase()) {
-      case 'happy':
-      case 'happiness':
-        return '😊';
-      case 'sad':
-      case 'sadness':
-        return '😢';
-      case 'angry':
-      case 'anger':
-        return '😠';
-      case 'fear':
-        return '😨';
-      case 'surprise':
-        return '😮';
-      case 'disgust':
-        return '🤢';
-      case 'neutral':
-        return '😐';
-      default:
-        return '😐';
+      case 'happy': return '😊';
+      case 'sad': return '😢';
+      case 'angry': return '😠';
+      case 'fear': return '😨';
+      case 'surprise': return '😮';
+      case 'disgust': return '🤢';
+      case 'neutral': return '😐';
+      default: return '😐';
     }
   }
 
   Color _getEmotionColor(String emotion) {
     switch (emotion.toLowerCase()) {
-      case 'happy':
-      case 'happiness':
-        return Colors.green;
-      case 'sad':
-      case 'sadness':
-        return Colors.blue;
-      case 'angry':
-      case 'anger':
-        return Colors.red;
-      case 'fear':
-        return Colors.orange;
-      case 'surprise':
-        return Colors.purple;
-      case 'disgust':
-        return Colors.brown;
-      case 'neutral':
-        return Colors.grey;
-      default:
-        return Colors.grey;
+      case 'happy': return Colors.green;
+      case 'sad': return Colors.blue;
+      case 'angry': return Colors.red;
+      case 'fear': return Colors.orange;
+      case 'surprise': return Colors.purple;
+      case 'disgust': return Colors.brown;
+      case 'neutral': return Colors.grey;
+      default: return Colors.grey;
     }
   }
 }
