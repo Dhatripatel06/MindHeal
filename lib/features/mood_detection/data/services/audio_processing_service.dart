@@ -8,7 +8,6 @@ class AudioProcessingService {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   
-  // Streams
   final StreamController<List<double>> _audioDataController = StreamController<List<double>>.broadcast();
   final StreamController<Duration> _durationController = StreamController<Duration>.broadcast();
   
@@ -23,27 +22,26 @@ class AudioProcessingService {
     try {
       if (await _audioRecorder.hasPermission()) {
         final directory = await getTemporaryDirectory();
-        _currentPath = '${directory.path}/temp_recording.wav';
+        // Important: We name the file .wav
+        _currentPath = '${directory.path}/emotion_recording.wav';
 
-        // --- KEY CONFIGURATION FOR ONNX MODEL ---
-        // We record directly into the format the AI needs.
-        // No FFmpeg conversion required later!
+        // --- CONFIGURATION FOR AI COMPATIBILITY ---
         const config = RecordConfig(
-          encoder: AudioEncoder.wav, // Record as WAV directly
-          sampleRate: 16000,         // 16k Hz (Required by Wav2Vec2)
-          numChannels: 1,            // Mono (Required by Wav2Vec2)
+          encoder: AudioEncoder.wav, // Native WAV encoding
+          sampleRate: 16000,         // 16k Hz (Required by AI)
+          numChannels: 1,            // Mono (Required by AI)
+          bitRate: 128000,
         );
 
+        // Start recording to file
         await _audioRecorder.start(config, path: _currentPath!);
         
         _duration = Duration.zero;
         _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
           _duration += const Duration(seconds: 1);
           _durationController.add(_duration);
-          
-          // Simulate waveform data since raw stream isn't always available on all platforms in v5+
-          // In a real app with more complex needs, we'd use a stream, but this suffices for UI visualization
-          _audioDataController.add([0.1, 0.5, 0.3, 0.7, 0.4]); 
+          // Simulate visualizer data (amplitudes)
+          _audioDataController.add([0.5, 0.5, 0.5, 0.5, 0.5]); 
         });
       }
     } catch (e) {

@@ -136,14 +136,26 @@ class AudioDetectionProvider extends ChangeNotifier {
     _isRecording = true;
     _isProcessing = false;
     _lastError = null;
-    _liveTranscribedText = ""; // Clear live text
+    _liveTranscribedText = ""; 
     notifyListeners();
+    
     try {
-      // --- FIX: Start both services ---
+      // 1. Start the Audio Recorder (Primary Priority)
+      // This saves the WAV file for emotion detection
       await _audioService.startRecording();
-      await _sttService.startListening(currentLocaleId);
+
+      // 2. Try to start Speech-to-Text (Secondary Priority)
+      // We wrap this in a try-catch so if it fails (mic conflict),
+      // the app doesn't crash and still records the audio.
+      try {
+        await _sttService.startListening(currentLocaleId);
+      } catch (sttError) {
+        print("⚠️ Speech-to-Text failed to start (Mic conflict?): $sttError");
+        // We continue without live text, relying on audio analysis
+      }
+      
     } catch (e) {
-      _lastError = e.toString();
+      _lastError = "Recording Error: $e";
       _isRecording = false;
       notifyListeners();
     }
