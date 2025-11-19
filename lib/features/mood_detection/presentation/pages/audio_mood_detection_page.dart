@@ -1,13 +1,13 @@
-// lib/features/mood_detection/presentation/pages/audio_mood_detection_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:just_audio/just_audio.dart'; // Needed for playback
 import '../../data/models/emotion_result.dart';
-import '../providers/audio_detection_provider.dart'; 
+import '../providers/audio_detection_provider.dart';
 import '../widgets/waveform_visualizer.dart';
 import '../widgets/emotion_confidence_bar.dart';
+import '../widgets/advice_dialog.dart'; // Reusing your existing AdviceDialog
 import 'mood_results_page.dart';
 
 class AudioMoodDetectionPage extends StatefulWidget {
@@ -21,898 +21,630 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
-  final TtsService _ttsService = TtsService();
+  late AnimationController _fabAnimationController;
+  late Animation<double> _fabScaleAnimation;
+  late AnimationController _contentAnimationController;
+  late Animation<double> _fadeAnimation;
+
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat(reverse: true);
-    
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+    _initializeAnimations();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<AudioDetectionProvider>();
       if (!provider.isInitialized) {
-         provider.initialize();
+        provider.initialize();
       }
     });
+  }
+
+  void _initializeAnimations() {
+    // Pulse animation for recording button
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    // FAB animation
+    _fabAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _fabScaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fabAnimationController, curve: Curves.elasticOut),
+    );
+    _fabAnimationController.forward();
+
+    // Content fade-in animation
+    _contentAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _contentAnimationController, curve: Curves.easeOut),
+    );
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _ttsService.dispose();
+    _fabAnimationController.dispose();
+    _contentAnimationController.dispose();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+  // --- Helper to play/pause the recorded audio ---
+  Future<void> _togglePlayback(String? filePath) async {
+    if (filePath == null) return;
+    
+    try {
+      if (_isPlaying) {
+        await _audioPlayer.pause();
+      } else {
+        await _audioPlayer.setFilePath(filePath);
+        await _audioPlayer.play();
+        _audioPlayer.playerStateStream.listen((state) {
+            if (state.processingState == ProcessingState.completed) {
+                if(mounted) setState(() => _isPlaying = false);
+            }
+        });
+      }
+      setState(() {
+        _isPlaying = !_isPlaying;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error playing audio: $e")));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'Audio Mood Detection',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.teal,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          Consumer<AudioDetectionProvider>(
-            builder: (context, provider, child) {
-              return DropdownButton<String>(
-                value: provider.selectedLanguage,
-                dropdownColor: Colors.teal,
-                iconEnabledColor: Colors.white,
-                underline: Container(),
-                onChanged: provider.isRecording || provider.isProcessing
-                    ? null
-                    : (String? newValue) {
-                        if (newValue != null) {
-                          provider.setLanguage(newValue);
-                        }
-                      },
-                items: <String>['English', 'हिंदी', 'ગુજરાતી']
-                    .map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(
-                      value,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            onPressed: context.watch<AudioDetectionProvider>().isRecording
-                ? null 
-                : _pickAudioFile,
-          ),
-          SizedBox(width: 10),
+      body: Stack(
+        children: [
+          _buildBackground(),
+          _buildCustomAppBar(),
+          _buildMainContent(),
         ],
       ),
-      body: Consumer<AudioDetectionProvider>(
-        builder: (context, provider, child) {
-          return Column(
+    );
+  }
+
+  Widget _buildBackground() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal.shade50, Colors.white],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomAppBar() {
+    return SafeArea(
+      child: Container(
+        height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _buildAppBarButton(
+              icon: Icons.arrow_back,
+              color: Colors.teal,
+              onTap: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Text(
+                'Voice Mood Analyst',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            // Language Selector
+            Consumer<AudioDetectionProvider>(
+              builder: (context, provider, _) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.teal.shade200),
+                  ),
+                  child: DropdownButton<String>(
+                    value: provider.selectedLanguage,
+                    icon: const Icon(Icons.language, color: Colors.teal, size: 20),
+                    underline: Container(),
+                    isDense: true,
+                    style: TextStyle(color: Colors.teal.shade800, fontWeight: FontWeight.w600),
+                    onChanged: provider.isRecording || provider.isProcessing
+                        ? null
+                        : (val) => provider.setLanguage(val!),
+                    items: ['English', 'हिंदी', 'ગુજરાતી'].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppBarButton({required IconData icon, required Color color, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Icon(icon, color: color),
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
+    return Consumer<AudioDetectionProvider>(
+      builder: (context, provider, child) {
+        
+        // Trigger animation when result arrives
+        if (provider.lastResult != null && _contentAnimationController.status != AnimationStatus.completed) {
+          _contentAnimationController.forward();
+        }
+
+        return SafeArea(
+          child: Column(
             children: [
+              const SizedBox(height: 80), // Spacing for AppBar
+              
+              // 1. Dynamic Visualizer Area
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  children: [
-                    // Waveform Visualization Area
-                    Container(
-                      height: 250,
-                      margin: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.teal.withOpacity(0.1),
-                            blurRadius: 15,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
+                flex: 4,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.teal.withOpacity(0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Stack(
-                          children: [
-                            WaveformVisualizer(
-                              audioData: provider.audioData,
-                              isRecording: provider.isRecording,
-                              color: Colors.teal,
-                            ),
-                            
-                            if (provider.isRecording)
-                              Positioned(
-                                top: 20,
-                                right: 20,
-                                child: _buildVoiceActivityIndicator(provider),
-                              ),
-                            
-                            if (provider.isRecording)
-                              Positioned(
-                                top: 20,
-                                left: 20,
-                                child: _buildRecordingTimer(provider),
-                              ),
-                            
-                            // --- FIX: Show live transcript ---
-                            if (provider.isRecording)
-                              _buildLiveTranscript(provider.liveTranscribedText),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // The Waveform
+                        WaveformVisualizer(
+                          audioData: provider.audioData,
+                          isRecording: provider.isRecording,
+                          color: provider.isRecording ? Colors.redAccent : Colors.teal,
+                        ),
 
-                            if (!provider.isRecording &&
-                                provider.audioData.isEmpty &&
-                                !provider.hasRecording &&
-                                provider.liveTranscribedText.isEmpty)
-                              _buildCenterMessage(),
-
-                            // --- FIX: Show final transcript after recording ---
-                            if (!provider.isRecording &&
-                                provider.liveTranscribedText.isNotEmpty &&
-                                provider.lastResult == null)
-                              _buildLiveTranscript(provider.liveTranscribedText, isFinal: true),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    if (provider.lastError != null)
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                           color: Colors.red.withOpacity(0.1),
-                           borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          "Error: ${provider.lastError}",
-                          style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.w500),
-                        ),
-                      ),
-
-                    if (provider.lastResult != null)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8), 
-                        padding: const EdgeInsets.all(20),
-                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.teal.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        // --- FIX: Pass transcribed text to results ---
-                        child: _buildResultsSection(provider, provider.liveTranscribedText),
-                      ),
-                      
-                    if (provider.isProcessing && provider.friendlyResponse == null)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Row(
+                        // Placeholder Icon when idle
+                        if (!provider.isRecording && provider.audioData.isEmpty && !provider.hasRecording)
+                          Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircularProgressIndicator(strokeWidth: 2),
-                              SizedBox(width: 16),
+                              Icon(Icons.graphic_eq, size: 80, color: Colors.teal.shade100),
+                              const SizedBox(height: 16),
                               Text(
-                                "Your friend is thinking...", 
-                                style: TextStyle(fontSize: 16, color: Colors.teal)
+                                "Tap mic to start speaking",
+                                style: TextStyle(color: Colors.grey[400], fontSize: 16),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-
-                    if (provider.friendlyResponse != null)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 16), 
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.blue.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
+                        
+                        // Processing Indicator
+                        if (provider.isProcessing)
+                          Container(
+                            color: Colors.black54,
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: Colors.white),
+                                  SizedBox(height: 16),
+                                  Text("Analyzing Tone & Voice...", style: TextStyle(color: Colors.white)),
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
+                          
+                        // Timer Overlay
+                        if (provider.isRecording)
+                          Positioned(
+                            top: 20,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _formatDuration(provider.recordingDuration),
+                                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 2. Transcript & Playback Area (If recording exists)
+              if (provider.hasRecording)
+                 Expanded(
+                    flex: 2,
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.teal.shade100),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            Row(
                               children: [
-                                const Text(
-                                  'Your friend says:',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
+                                Text(
+                                  "You said:",
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.bold),
+                                ),
+                                const Spacer(),
+                                // Playback Button
+                                GestureDetector(
+                                  onTap: () => _togglePlayback(provider.audioFilePath),
+                                  child: Icon(
+                                    _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                                    color: Colors.teal,
+                                    size: 28,
                                   ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.volume_up, color: Colors.blue),
-                                  onPressed: () {
-                                    _ttsService.speak(
-                                      provider.friendlyResponse!, 
-                                      provider.currentLocaleId
-                                    );
-                                  },
-                                )
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              provider.friendlyResponse!,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                height: 1.4, 
+                            Expanded(
+                              child: SingleChildScrollView(
+                                child: Text(
+                                  provider.liveTranscribedText.isEmpty 
+                                    ? "(Audio processed, analyzing tone...)" 
+                                    : provider.liveTranscribedText,
+                                  style: const TextStyle(fontSize: 16, height: 1.4, fontStyle: FontStyle.italic),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                  ],
-                ),
-              ),
-              
-              Container(
-                padding: const EdgeInsets.all(24),
-                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    )
-                  ]
-                ),
-                child: _buildControlSection(provider),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // --- FIX: New widget for center message ---
-  Widget _buildCenterMessage() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.mic,
-            size: 64,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Tap the microphone to start recording',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-  
-  // --- FIX: New widget to show live text ---
-  Widget _buildLiveTranscript(String text, {bool isFinal = false}) {
-    return Positioned.fill(
-      bottom: 20,
-      left: 20,
-      right: 20,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: isFinal ? Colors.white : Colors.black.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: isFinal ? Border.all(color: Colors.grey[300]!) : null,
-          ),
-          child: Text(
-            text.isEmpty ? "Listening..." : text,
-            style: TextStyle(
-              color: isFinal ? Colors.black87 : Colors.white,
-              fontSize: 16,
-              fontWeight: isFinal ? FontWeight.w600 : FontWeight.normal,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  Widget _buildVoiceActivityIndicator(AudioDetectionProvider provider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: provider.isVoiceDetected ? Colors.green : Colors.grey,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            provider.isVoiceDetected ? 'Voice Detected' : 'Listening...',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecordingTimer(AudioDetectionProvider provider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedBuilder(
-            animation: _pulseController,
-            builder: (context, child) {
-              if (mounted) {
-                 return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: child,
-                );
-              }
-              return child!;
-            },
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            _formatDuration(provider.recordingDuration),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- FIX: Accept the transcribed text ---
-  Widget _buildResultsSection(AudioDetectionProvider provider, String transcribedText) {
-    final result = provider.lastResult!;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Voice Analysis Results',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
-            IconButton(
-              onPressed: () => provider.clearResults(),
-              icon: const Icon(Icons.close, size: 20),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        // --- FIX: Show what the user said ---
-        Text(
-          'What you said:',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '"$transcribedText"',
-          style: const TextStyle(
-            fontSize: 16,
-            fontStyle: FontStyle.italic,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 16),
-        
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _getEmotionColor(result.emotion).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _getEmotionColor(result.emotion).withOpacity(0.3),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                _getEmotionIcon(result.emotion),
-                color: _getEmotionColor(result.emotion),
-                size: 32,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      result.emotion.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: _getEmotionColor(result.emotion),
-                      ),
                     ),
-                    Text(
-                      '${(result.confidence * 100).toInt()}% Confidence',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        
-        const SizedBox(height: 16),
-        
-        Text(
-          'Emotion Breakdown',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 8),
-        
-        ...result.allEmotions.entries.map(
-          (entry) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: EmotionConfidenceBar(
-              emotion: entry.key,
-              confidence: entry.value,
-              emoji: _getEmotionEmoji(entry.key),
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 16),
-        
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () => _saveResults(result),
-                icon: const Icon(Icons.save),
-                label: const Text('Save'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () => _viewDetailedResults(result),
-                icon: const Icon(Icons.analytics),
-                label: const Text('Details'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+                 ),
 
-  Widget _buildControlSection(AudioDetectionProvider provider) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedBuilder(
-          animation: _pulseController,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: provider.isRecording && mounted ? _pulseAnimation.value : 1.0,
-              child: GestureDetector(
-                onTap: provider.isProcessing 
-                    ? null
-                    : (provider.isRecording ? _stopRecording : _startRecording),
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: provider.isRecording ? Colors.red : Colors.teal,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (provider.isRecording ? Colors.red : Colors.teal)
-                            .withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
+              // 3. Results Area (Shows only after analysis)
+              if (provider.lastResult != null)
+                Expanded(
+                  flex: 4,
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: _buildResultCard(provider.lastResult!),
                   ),
-                  child: provider.isProcessing
-                      ? const Padding(
-                          padding: EdgeInsets.all(32.0),
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-                        )
-                      : Icon(
-                          provider.isRecording ? Icons.stop : Icons.mic,
-                          color: Colors.white,
-                          size: 48,
+                )
+              else 
+                const Spacer(flex: 2),
+
+              // 4. Bottom Controls
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Upload Button
+                    _buildCircleButton(
+                      icon: Icons.folder_open_rounded,
+                      color: Colors.blueGrey,
+                      onPressed: provider.isRecording ? null : _pickAudioFile,
+                    ),
+                    
+                    // Main Record Button
+                    ScaleTransition(
+                      scale: provider.isRecording ? _pulseAnimation : const AlwaysStoppedAnimation(1.0),
+                      child: GestureDetector(
+                        onTap: provider.isProcessing 
+                            ? null 
+                            : (provider.isRecording ? _stopRecording : _startRecording),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: provider.isRecording 
+                                ? [Colors.red.shade400, Colors.red.shade600]
+                                : [Colors.teal.shade400, Colors.teal.shade600],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (provider.isRecording ? Colors.red : Colors.teal).withOpacity(0.4),
+                                blurRadius: 15,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            provider.isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                            color: Colors.white,
+                            size: 40,
+                          ),
                         ),
+                      ),
+                    ),
+
+                    // Clear Button
+                    _buildCircleButton(
+                      icon: Icons.refresh_rounded,
+                      color: Colors.orange,
+                      onPressed: provider.isRecording ? null : () {
+                        provider.clearResults();
+                        provider.clearRecording();
+                        _contentAnimationController.reset();
+                      },
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
-        
-        const SizedBox(height: 16),
-        
-        Text(
-          provider.isProcessing
-              ? 'Analyzing...'
-              : (provider.isRecording ? 'Recording...' : 'Tap to Record'),
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
+            ],
           ),
-        ),
-        
-        const SizedBox(height: 24),
-        
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildSecondaryButton(
-              icon: Icons.folder_open,
-              label: 'Upload',
-              onPressed: provider.isRecording || provider.isProcessing
-                  ? null 
-                  : _pickAudioFile,
-            ),
-            _buildSecondaryButton(
-              icon: Icons.play_arrow,
-              label: 'Play',
-              onPressed: provider.hasRecording && !provider.isRecording && !provider.isProcessing
-                  ? _playRecording 
-                  : null,
-            ),
-            _buildSecondaryButton(
-              icon: Icons.delete,
-              label: 'Clear',
-              onPressed: (provider.hasRecording || provider.lastResult != null || provider.liveTranscribedText.isNotEmpty) && !provider.isRecording && !provider.isProcessing
-                  ? _clearRecording 
-                  : null,
-            ),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 
-  Widget _buildSecondaryButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-  }) {
-    return Column(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: onPressed != null ? Colors.teal.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: onPressed != null ? Colors.teal.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
-            ),
-          ),
-          child: IconButton(
-            onPressed: onPressed,
-            icon: Icon(
-              icon,
-              color: onPressed != null ? Colors.teal : Colors.grey,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: onPressed != null ? Colors.teal : Colors.grey,
-          ),
-        ),
-      ],
+  Widget _buildCircleButton({required IconData icon, required Color color, required VoidCallback? onPressed}) {
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: onPressed != null ? color : Colors.grey[300]),
+        onPressed: onPressed,
+      ),
     );
   }
+
+  Widget _buildResultCard(EmotionResult result) {
+    final confidenceColor = _getAccuracyColor(result.confidence);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Emotion Icon & Label
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _getEmotionEmoji(result.emotion),
+                  style: const TextStyle(fontSize: 32),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  result.emotion.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: _getEmotionColor(result.emotion),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            // Confidence Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: confidenceColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                "${(result.confidence * 100).toInt()}% Confidence",
+                style: TextStyle(color: confidenceColor, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Action Buttons (Save, Details, ADVISER)
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildActionChip(
+                  icon: Icons.analytics_outlined,
+                  label: 'Details',
+                  color: Colors.blue,
+                  onTap: () => _viewDetailedResults(result),
+                ),
+                // *** THE ADVISER BUTTON ***
+                _buildActionChip(
+                  icon: Icons.psychology,
+                  label: 'MindHeal Adviser',
+                  color: Colors.purple,
+                  onTap: () => _getConversationalAdvice(context), 
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionChip({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Logic Methods ---
 
   Future<void> _startRecording() async {
     try {
-      final provider = context.read<AudioDetectionProvider>();
-      await provider.startRecording();
+      await context.read<AudioDetectionProvider>().startRecording();
     } catch (e) {
-      _showError('Failed to start recording: $e');
+      _showError('Recording failed: $e');
     }
   }
 
   Future<void> _stopRecording() async {
     try {
-      final provider = context.read<AudioDetectionProvider>();
-      await provider.stopRecording();
+      await context.read<AudioDetectionProvider>().stopRecording();
     } catch (e) {
-      _showError('Failed to stop recording: $e');
+      _showError('Stop failed: $e');
     }
   }
 
   Future<void> _pickAudioFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
-        allowMultiple: false,
-      );
-
+      final result = await FilePicker.platform.pickFiles(type: FileType.audio);
       if (result != null && result.files.single.path != null) {
-        final provider = context.read<AudioDetectionProvider>();
-        await provider.analyzeAudioFile(File(result.files.single.path!));
+        await context.read<AudioDetectionProvider>().analyzeAudioFile(File(result.files.single.path!));
       }
     } catch (e) {
-      _showError('Failed to pick audio file: $e');
-    }
-  }
-
-  Future<void> _playRecording() async {
-    try {
-      final provider = context.read<AudioDetectionProvider>();
-      await provider.playLastRecording();
-    } catch (e) {
-      _showError('Failed to play recording: $e');
-    }
-  }
-
-  Future<void> _clearRecording() async {
-    final provider = context.read<AudioDetectionProvider>();
-    provider.clearRecording();
-  }
-  
-  void _showAudioSettings() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: 300,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-             Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-             const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Audio Settings',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  SwitchListTile(
-                    title: const Text('Noise Reduction'),
-                    subtitle: const Text('Reduce background noise (simulated)'),
-                    value: true,
-                    onChanged: (value) {},
-                    activeColor: Colors.teal,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Voice Activity Detection'),
-                    subtitle: const Text('Auto-detect when speaking (simulated)'),
-                    value: true,
-                    onChanged: (value) {},
-                     activeColor: Colors.teal,
-                  ),
-                  ListTile(
-                    title: const Text('Recording Quality'),
-                    subtitle: const Text('16kHz (wav)'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {},
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _saveResults(EmotionResult result) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Audio analysis saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      _showError('Pick failed: $e');
     }
   }
 
   void _viewDetailedResults(EmotionResult result) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MoodResultsPage(emotionResult: result),
+    Navigator.push(context, MaterialPageRoute(builder: (_) => MoodResultsPage(emotionResult: result)));
+  }
+
+  // --- *** THE "VIRTUAL FRIEND" LOGIC *** ---
+  void _getConversationalAdvice(BuildContext context) {
+    final provider = context.read<AudioDetectionProvider>();
+    final result = provider.lastResult;
+    final userText = provider.liveTranscribedText;
+
+    if (result == null) return;
+
+    // We re-use the AdviceDialog but with a slight tweak to pass user text
+    // Since AdviceDialog uses GeminiAdviserService internally, we need to ensure 
+    // we trigger the "Conversational" mode. 
+    // For now, we will use the existing AdviceDialog but enhance the prompt context.
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AdviceDialog(
+        emotionResult: result,
+        // You might need to update AdviceDialog to accept 'userSpeech' text
+        // or we pass it as "context" if your AdviceDialog supports it.
       ),
     );
   }
 
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
-  String _formatDuration(Duration duration) {
+  String _formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes);
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
+    return '${twoDigits(d.inMinutes)}:${twoDigits(d.inSeconds.remainder(60))}';
+  }
+
+  Color _getAccuracyColor(double confidence) {
+    if (confidence > 0.8) return Colors.green;
+    if (confidence > 0.5) return Colors.orange;
+    return Colors.red;
   }
 
   Color _getEmotionColor(String emotion) {
     switch (emotion.toLowerCase()) {
-      case 'happy':
-        return Colors.green;
-      case 'sad':
-      case 'sadness':
-        return Colors.blue;
-      case 'angry':
-      case 'anger':
-        return Colors.red;
-      case 'fear':
-        return Colors.orange;
-      case 'surprise':
-        return Colors.purple;
-      case 'disgust':
-        return Colors.brown;
-      case 'neutral':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getEmotionIcon(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'happy':
-        return Icons.sentiment_very_satisfied;
-      case 'sad':
-      case 'sadness':
-        return Icons.sentiment_very_dissatisfied;
-      case 'angry':
-      case 'anger':
-        return Icons.sentiment_dissatisfied;
-      case 'fear':
-        return Icons.sentiment_neutral;
-      case 'surprise':
-        return Icons.sentiment_satisfied;
-      case 'disgust':
-        return Icons.sentiment_dissatisfied;
-      case 'neutral':
-        return Icons.sentiment_neutral;
-      default:
-        return Icons.sentiment_neutral;
+      case 'happy': return Colors.green;
+      case 'sad': return Colors.blue;
+      case 'angry': return Colors.red;
+      case 'neutral': return Colors.grey;
+      default: return Colors.purple;
     }
   }
 
   String _getEmotionEmoji(String emotion) {
     switch (emotion.toLowerCase()) {
-      case 'happy':
-        return '😊';
-      case 'sad':
-      case 'sadness':
-        return '😢';
-      case 'angry':
-      case 'anger':
-        return '😠';
-      case 'fear':
-        return '😨';
-      case 'surprise':
-        return '😲';
-      case 'disgust':
-        return '🤢';
-      case 'neutral':
-        return '😐';
-      default:
-        return '😐';
+      case 'happy': return '😊';
+      case 'sad': return '😢';
+      case 'angry': return '😠';
+      case 'neutral': return '😐';
+      default: return '🤔';
     }
   }
 }

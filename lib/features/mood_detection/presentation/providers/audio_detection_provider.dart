@@ -34,6 +34,8 @@ class AudioDetectionProvider extends ChangeNotifier {
   EmotionResult? _lastResult;
   String? _friendlyResponse;
   String? _lastError;
+  String? _lastRecordedFilePath;
+  String? get audioFilePath => _lastRecordedFilePath;
   List<double> _audioData = [];
   Duration _recordingDuration = Duration.zero;
   StreamSubscription? _durationSubscription;
