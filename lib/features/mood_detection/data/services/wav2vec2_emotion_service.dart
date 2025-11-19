@@ -1,15 +1,12 @@
-// lib/features/mood_detection/data/services/wav2vec2_emotion_service.dart
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
-import 'package:path_provider/path_provider.dart';
 
-// --- NOTE: FFmpeg imports are commented out until JitPack is back online ---
-// import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
-// import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
+// FFmpeg imports REMOVED completely. 
+// We rely on the Record package to give us the correct format.
 
 class Wav2Vec2EmotionService {
   OrtSession? _session;
@@ -31,7 +28,8 @@ class Wav2Vec2EmotionService {
       
       final ort = OnnxRuntime();
       
-      // Load the single-file optimized model
+      // Load your SINGLE FILE optimized model
+      // Ensure 'assets/models/wav2vec2_emotion.onnx' is the actual file name in assets
       _session = await ort.createSessionFromAsset('assets/models/wav2vec2_emotion.onnx');
 
       // Load Labels
@@ -47,47 +45,41 @@ class Wav2Vec2EmotionService {
     }
   }
 
-  /// Temporary bypass until FFmpeg library server is back online.
-  /// This works fine for standard recordings (WAV) but may fail for MP3 uploads.
-  Future<File?> _convertToCompatibleWav(File inputFile) async {
-    print("⚠️ FFmpeg disabled: Skipping conversion. Assuming file is valid WAV.");
-    return inputFile;
-  }
-
-  Future<EmotionResult> analyzeAudio(File rawFile) async {
+  Future<EmotionResult> analyzeAudio(File audioFile) async {
     if (!_isInitialized || _session == null) {
       await initialize();
       if (!_isInitialized) return EmotionResult.error("Model not ready.");
     }
 
-    // 1. Get File
-    File? audioFile = await _convertToCompatibleWav(rawFile);
+    // Note: We skip conversion because AudioProcessingService now records 
+    // directly to WAV/16k/Mono.
+    // Limitation: Uploaded MP3s from gallery might fail analysis without FFmpeg.
     
     try {
-      // 2. Read Bytes & Skip Header
-      final audioBytes = await audioFile!.readAsBytes();
+      // 1. Read Bytes
+      final audioBytes = await audioFile.readAsBytes();
       
-      // Skip standard WAV header (44 bytes) to get raw PCM data
+      // Skip standard WAV header (44 bytes)
       if (audioBytes.length <= 44) return EmotionResult.error("Audio too short.");
       
-      // 3. Normalize Audio
-      // Convert 16-bit Int PCM to Float [-1.0, 1.0]
+      // 2. Parse PCM Data
       final pcmData = audioBytes.sublist(44);
       final pcm16 = pcmData.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
       
+      // Normalize
       for (int i = 0; i < pcm16.length; i++) {
         audioFloats[i] = pcm16[i] / 32768.0;
       }
 
       if (audioFloats.isEmpty) return EmotionResult.error("Empty audio data.");
 
-      // 4. Run Inference
+      // 3. Run Inference
       final shape = [1, audioFloats.length];
       final inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
       
-      // --- FIX: Dynamic Input Name (Solves the crash) ---
-      final inputName = _session!.inputNames.first; // Usually "input_values"
+      // Dynamic Input Name
+      final inputName = _session!.inputNames.first; 
       final inputs = {inputName: inputTensor};
       
       final outputs = await _session!.run(inputs);
@@ -96,19 +88,16 @@ class Wav2Vec2EmotionService {
         throw Exception("Model returned empty output");
       }
 
-      // 5. Process Output
-      final outputKey = _session!.outputNames.first; // Usually "logits"
-      // Cast output to OrtValue to access list methods
+      // 4. Process Output
+      final outputKey = _session!.outputNames.first;
       final outputOrtValue = outputs[outputKey] as OrtValue?;
       if (outputOrtValue == null) throw Exception("Output tensor missing");
 
       final outputList = await outputOrtValue.asList();
       final firstBatch = outputList[0] as List;
-      
-      // Convert results to double
       final scores = firstBatch.map((e) => (e as num).toDouble()).toList();
 
-      // 6. Softmax Calculation
+      // 5. Softmax & Result
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;

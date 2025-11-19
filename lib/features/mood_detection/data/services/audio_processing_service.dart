@@ -1,115 +1,86 @@
-// lib/features/mood_detection/data/services/audio_processing_service.dart
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
 
 class AudioProcessingService {
-  static final AudioProcessingService _instance = AudioProcessingService._internal();
-  factory AudioProcessingService() => _instance;
-  AudioProcessingService._internal();
-
-  final AudioRecorder _recorder = AudioRecorder();
-  final AudioPlayer _player = AudioPlayer();
-  final StreamController<List<double>> _audioDataController = StreamController<List<double>>.broadcast();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   
-  String? _recordingPath;
-  Timer? _amplitudeTimer;
-  DateTime? _startTime;
-
+  // Streams
+  final StreamController<List<double>> _audioDataController = StreamController<List<double>>.broadcast();
+  final StreamController<Duration> _durationController = StreamController<Duration>.broadcast();
+  
   Stream<List<double>> get audioDataStream => _audioDataController.stream;
-  Stream<Duration> get recordingDurationStream {
-    return Stream.periodic(const Duration(seconds: 1), (i) {
-      if (_startTime == null) return Duration.zero;
-      return DateTime.now().difference(_startTime!);
-    });
-  }
+  Stream<Duration> get recordingDurationStream => _durationController.stream;
 
-  Future<String> _getFilePath() async {
-    final dir = await getApplicationDocumentsDirectory();
-    // Use a .wav extension for PCM data
-    return '${dir.path}/mindheal_recording_${DateTime.now().millisecondsSinceEpoch}.wav';
-  }
+  Timer? _timer;
+  Duration _duration = Duration.zero;
+  String? _currentPath;
 
   Future<void> startRecording() async {
     try {
-      if (await _recorder.hasPermission()) {
-        _recordingPath = await _getFilePath();
-        _startTime = DateTime.now();
+      if (await _audioRecorder.hasPermission()) {
+        final directory = await getTemporaryDirectory();
+        _currentPath = '${directory.path}/temp_recording.wav';
 
-        // --- CRITICAL: Record at 16kHz PCM for Wav2Vec2 ---
+        // --- KEY CONFIGURATION FOR ONNX MODEL ---
+        // We record directly into the format the AI needs.
+        // No FFmpeg conversion required later!
         const config = RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: 16000,
-          numChannels: 1,
+          encoder: AudioEncoder.wav, // Record as WAV directly
+          sampleRate: 16000,         // 16k Hz (Required by Wav2Vec2)
+          numChannels: 1,            // Mono (Required by Wav2Vec2)
         );
 
-        await _recorder.start(config, path: _recordingPath!);
-
-        // Start polling for amplitude
-        _amplitudeTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
-          if (await _recorder.isRecording()) {
-            final amplitude = await _recorder.getAmplitude();
-            // Simulate waveform data from amplitude
-            final audioData = List.generate(64, (index) => (amplitude.current) / 30.0 - 1.0 + (index % 2 == 0 ? 0.1 : -0.1));
-            _audioDataController.add(audioData);
-          } else {
-            timer.cancel();
-          }
+        await _audioRecorder.start(config, path: _currentPath!);
+        
+        _duration = Duration.zero;
+        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          _duration += const Duration(seconds: 1);
+          _durationController.add(_duration);
+          
+          // Simulate waveform data since raw stream isn't always available on all platforms in v5+
+          // In a real app with more complex needs, we'd use a stream, but this suffices for UI visualization
+          _audioDataController.add([0.1, 0.5, 0.3, 0.7, 0.4]); 
         });
-      } else {
-        throw Exception("Microphone permission not granted.");
       }
     } catch (e) {
-      print('Error starting recording: $e');
-      throw Exception("Could not start recording.");
+      print("Error starting recording: $e");
+      throw e;
     }
   }
 
   Future<File?> stopRecording() async {
-    _amplitudeTimer?.cancel();
-    _startTime = null;
-    try {
-      final path = await _recorder.stop();
-      if (path != null) {
-        _recordingPath = path;
-        return File(_recordingPath!);
-      }
-      return null;
-    } catch (e) {
-      print('Error stopping recording: $e');
-      return null;
+    _timer?.cancel();
+    final path = await _audioRecorder.stop();
+    
+    if (path != null) {
+      return File(path);
     }
+    return null;
   }
 
   Future<void> playLastRecording() async {
-    if (_recordingPath == null) {
-      throw Exception('No recording available to play.');
-    }
-    try {
-      await _player.setFilePath(_recordingPath!);
-      await _player.play();
-    } catch (e) {
-      print('Error playing recording: $e');
-      throw Exception("Could not play recording.");
+    if (_currentPath != null) {
+      await _audioPlayer.setFilePath(_currentPath!);
+      await _audioPlayer.play();
     }
   }
 
   void clearRecording() {
-    _recordingPath = null;
-    _audioDataController.add([]); // Clear waveform
-    _startTime = null;
-    if (_player.playing) {
-      _player.stop();
-    }
+    _currentPath = null;
+    _duration = Duration.zero;
+    _durationController.add(Duration.zero);
+    _audioDataController.add([]);
   }
 
   void dispose() {
-    _amplitudeTimer?.cancel();
+    _audioRecorder.dispose();
+    _audioPlayer.dispose();
     _audioDataController.close();
-    _recorder.dispose();
-    _player.dispose();
+    _durationController.close();
+    _timer?.cancel();
   }
 }
