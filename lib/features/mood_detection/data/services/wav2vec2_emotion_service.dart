@@ -7,7 +7,7 @@ import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 
-// --- TEMPORARY: Removed FFmpeg imports to fix build ---
+// --- NOTE: FFmpeg imports are commented out until JitPack is back online ---
 // import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
 // import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
 
@@ -31,7 +31,7 @@ class Wav2Vec2EmotionService {
       
       final ort = OnnxRuntime();
       
-      // Load the model from assets
+      // Load the single-file optimized model
       _session = await ort.createSessionFromAsset('assets/models/wav2vec2_emotion.onnx');
 
       // Load Labels
@@ -40,15 +40,15 @@ class Wav2Vec2EmotionService {
       _labels = labelsData.split('\n').where((l) => l.isNotEmpty).toList();
 
       _isInitialized = true;
-      print("✅ Wav2Vec2EmotionService Initialized.");
+      print("✅ Wav2Vec2EmotionService Initialized. Labels: ${_labels?.length}");
     } catch (e) {
       print("❌ Error initializing Wav2Vec2 service: $e");
       _isInitialized = false;
     }
   }
 
-  /// Temporary Bypass: Just return the file as-is.
-  /// When JitPack servers are fixed, we can add FFmpeg back.
+  /// Temporary bypass until FFmpeg library server is back online.
+  /// This works fine for standard recordings (WAV) but may fail for MP3 uploads.
   Future<File?> _convertToCompatibleWav(File inputFile) async {
     print("⚠️ FFmpeg disabled: Skipping conversion. Assuming file is valid WAV.");
     return inputFile;
@@ -60,16 +60,18 @@ class Wav2Vec2EmotionService {
       if (!_isInitialized) return EmotionResult.error("Model not ready.");
     }
 
-    // 1. Get File (Conversion skipped for now)
+    // 1. Get File
     File? audioFile = await _convertToCompatibleWav(rawFile);
     
     try {
-      // 2. Read Bytes
+      // 2. Read Bytes & Skip Header
       final audioBytes = await audioFile!.readAsBytes();
       
+      // Skip standard WAV header (44 bytes) to get raw PCM data
       if (audioBytes.length <= 44) return EmotionResult.error("Audio too short.");
       
-      // 3. Parse PCM Data
+      // 3. Normalize Audio
+      // Convert 16-bit Int PCM to Float [-1.0, 1.0]
       final pcmData = audioBytes.sublist(44);
       final pcm16 = pcmData.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
@@ -84,9 +86,8 @@ class Wav2Vec2EmotionService {
       final shape = [1, audioFloats.length];
       final inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
       
-      // --- FIX: Dynamically get the correct input name ---
-      // This handles both 'input' and 'input_values' automatically
-      final inputName = _session!.inputNames.first;
+      // --- FIX: Dynamic Input Name (Solves the crash) ---
+      final inputName = _session!.inputNames.first; // Usually "input_values"
       final inputs = {inputName: inputTensor};
       
       final outputs = await _session!.run(inputs);
@@ -96,16 +97,18 @@ class Wav2Vec2EmotionService {
       }
 
       // 5. Process Output
-      final outputKey = _session!.outputNames.first;
-      // outputs contains dynamic types, we cast to OrtValue first
+      final outputKey = _session!.outputNames.first; // Usually "logits"
+      // Cast output to OrtValue to access list methods
       final outputOrtValue = outputs[outputKey] as OrtValue?;
       if (outputOrtValue == null) throw Exception("Output tensor missing");
 
       final outputList = await outputOrtValue.asList();
       final firstBatch = outputList[0] as List;
+      
+      // Convert results to double
       final scores = firstBatch.map((e) => (e as num).toDouble()).toList();
 
-      // 6. Softmax & Result
+      // 6. Softmax Calculation
       final allEmotions = <String, double>{};
       double maxScore = -double.infinity;
       int maxIndex = -1;
