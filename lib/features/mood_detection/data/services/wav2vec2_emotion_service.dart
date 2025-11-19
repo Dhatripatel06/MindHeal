@@ -32,50 +32,49 @@ class Wav2Vec2EmotionService {
     }
   }
 
-  /// Parses WAV to find audio data and normalizes volume for better accuracy
-  Float32List _parseAndNormalizeWav(Uint8List bytes) {
+  /// 1. Parse WAV (Skip Header)
+  /// 2. Convert to Float32
+  /// 3. Standardize (Mean=0, Std=1) <- CRITICAL FOR ACCURACY
+  Float32List _processAudioData(Uint8List bytes) {
     try {
-      // 1. Find 'data' chunk to skip header
-      int dataOffset = -1;
-      for (int i = 0; i < min(bytes.length - 4, 2000); i++) {
-        if (bytes[i] == 0x64 && bytes[i + 1] == 0x61 && bytes[i + 2] == 0x74 && bytes[i + 3] == 0x61) {
-          dataOffset = i + 8;
-          break;
-        }
-      }
+      // --- 1. SKIP HEADER ---
+      // Simple heuristic: Skip 44 bytes. 
+      // If the file is small, it might be just a header.
+      if (bytes.length < 100) return Float32List(0);
       
-      if (dataOffset == -1) {
-        print("⚠️ Header warning: 'data' chunk not found. Skipping standard 44 bytes.");
-        dataOffset = 44; // Fallback
-      }
-
-      if (dataOffset >= bytes.length) return Float32List(0);
-
-      // 2. Convert Bytes to Int16
-      final audioData = bytes.sublist(dataOffset);
+      // Finding the 'data' chunk is safer, but 44 is standard for the recorder package.
+      int offset = 44;
+      
+      // --- 2. CONVERT TO FLOAT ---
+      final audioData = bytes.sublist(offset);
       final int16List = audioData.buffer.asInt16List();
       final floatList = Float32List(int16List.length);
-
-      // 3. Find Max Amplitude for Normalization
-      double maxAmp = 0.0;
+      
+      // Calculate Mean and StdDev for Normalization
+      double sum = 0.0;
       for (var sample in int16List) {
-        double absSample = sample.abs().toDouble();
-        if (absSample > maxAmp) maxAmp = absSample;
+        sum += sample;
       }
+      double mean = sum / int16List.length;
 
-      // 4. Normalize (Scale audio to -1.0 to 1.0 range)
-      // If audio is too quiet, the model fails. This fixes it.
-      double scaler = (maxAmp > 0) ? (1.0 / maxAmp) : 0.0; // Scale to max volume
-      // Don't over-amplify noise if silence
-      if (maxAmp < 100) scaler = 1.0 / 32768.0; 
+      double sumSqDiff = 0.0;
+      for (var sample in int16List) {
+        double diff = sample - mean;
+        sumSqDiff += diff * diff;
+      }
+      // Prevent division by zero if audio is silence
+      double std = sqrt(sumSqDiff / int16List.length);
+      if (std < 1e-5) std = 1.0; 
 
+      // --- 3. STANDARDIZE ---
+      // Formula: (x - mean) / std
       for (int i = 0; i < int16List.length; i++) {
-        floatList[i] = int16List[i] * scaler; // Normalized
+        floatList[i] = (int16List[i] - mean) / std;
       }
 
       return floatList;
     } catch (e) {
-      print("Error parsing WAV: $e");
+      print("Error processing audio: $e");
       return Float32List(0);
     }
   }
@@ -86,26 +85,28 @@ class Wav2Vec2EmotionService {
 
     try {
       final audioBytes = await audioFile.readAsBytes();
-      final audioFloats = _parseAndNormalizeWav(audioBytes);
+      final inputFloats = _processAudioData(audioBytes);
       
-      if (audioFloats.isEmpty) return EmotionResult.error("Audio file empty/invalid");
+      if (inputFloats.isEmpty) return EmotionResult.error("Invalid audio file");
 
-      // Inference
-      final shape = [1, audioFloats.length];
-      final inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
+      // Create Tensor
+      final shape = [1, inputFloats.length];
+      final inputTensor = await OrtValue.fromList(inputFloats.toList(), shape);
       final inputName = _session!.inputNames.first;
       final inputs = {inputName: inputTensor};
       
+      // Run Inference
       final outputs = await _session!.run(inputs);
       if (outputs == null || outputs.isEmpty) throw Exception("Empty output");
 
+      // Get Logits
       final outputKey = _session!.outputNames.first;
       final outputOrt = outputs[outputKey] as OrtValue?;
       final outputList = await outputOrt!.asList();
-      final scores = (outputList[0] as List).map((e) => (e as num).toDouble()).toList();
+      final logits = (outputList[0] as List).map((e) => (e as num).toDouble()).toList();
 
       // Softmax
-      final expScores = scores.map((s) => exp(s)).toList();
+      final expScores = logits.map((s) => exp(s)).toList();
       final sumExp = expScores.reduce((a, b) => a + b);
       final probs = expScores.map((s) => s / sumExp).toList();
 
@@ -116,7 +117,8 @@ class Wav2Vec2EmotionService {
       for (int i = 0; i < probs.length; i++) {
         if (_labels != null && i < _labels!.length) {
           allEmotions[_labels![i]] = probs[i];
-          print("Model Output -> ${_labels![i]}: ${(probs[i]*100).toStringAsFixed(1)}%");
+          print("📊 ${_labels![i]}: ${(probs[i]*100).toStringAsFixed(1)}%"); // Debug log
+          
           if (probs[i] > maxScore) {
             maxScore = probs[i];
             maxIndex = i;
