@@ -60,20 +60,16 @@ class Wav2Vec2EmotionService {
       if (!_isInitialized) return EmotionResult.error("Model not ready.");
     }
 
-    // 1. Get File (Conversion skipped)
+    // 1. Get File (Conversion skipped for now)
     File? audioFile = await _convertToCompatibleWav(rawFile);
     
     try {
       // 2. Read Bytes
       final audioBytes = await audioFile!.readAsBytes();
       
-      // Basic check for WAV header
       if (audioBytes.length <= 44) return EmotionResult.error("Audio too short.");
       
       // 3. Parse PCM Data
-      // This assumes 16kHz Mono WAV input (standard for app recordings)
-      // If you upload an MP3/MP4 manually, this might fail or give noise results
-      // until we can add FFmpeg back.
       final pcmData = audioBytes.sublist(44);
       final pcm16 = pcmData.buffer.asInt16List();
       final audioFloats = Float32List(pcm16.length);
@@ -87,7 +83,11 @@ class Wav2Vec2EmotionService {
       // 4. Run Inference
       final shape = [1, audioFloats.length];
       final inputTensor = await OrtValue.fromList(audioFloats.toList(), shape);
-      final inputs = {'input': inputTensor};
+      
+      // --- FIX: Dynamically get the correct input name ---
+      // This handles both 'input' and 'input_values' automatically
+      final inputName = _session!.inputNames.first;
+      final inputs = {inputName: inputTensor};
       
       final outputs = await _session!.run(inputs);
 
@@ -97,8 +97,12 @@ class Wav2Vec2EmotionService {
 
       // 5. Process Output
       final outputKey = _session!.outputNames.first;
-      final outputValue = await (outputs[outputKey] as OrtValue).asList();
-      final firstBatch = outputValue[0] as List;
+      // outputs contains dynamic types, we cast to OrtValue first
+      final outputOrtValue = outputs[outputKey] as OrtValue?;
+      if (outputOrtValue == null) throw Exception("Output tensor missing");
+
+      final outputList = await outputOrtValue.asList();
+      final firstBatch = outputList[0] as List;
       final scores = firstBatch.map((e) => (e as num).toDouble()).toList();
 
       // 6. Softmax & Result
