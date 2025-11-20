@@ -21,39 +21,35 @@ class AudioProcessingService {
 
   Future<void> startRecording() async {
     try {
-      // 1. Check Permissions explicitly
-      var status = await Permission.microphone.request();
-      if (status != PermissionStatus.granted) {
+      final micStatus = await Permission.microphone.request();
+      if (micStatus != PermissionStatus.granted) {
         throw Exception("Microphone permission denied");
       }
 
-      // 2. Prepare File
       final directory = await getTemporaryDirectory();
       _currentPath = '${directory.path}/emotion_recording.wav';
-      final file = File(_currentPath!);
-      if (await file.exists()) {
-        await file.delete(); // Clean up old file
-      }
 
-      // 3. Config: WAV, 16k, Mono (Critical for AI)
+      // --- CRITICAL: Record in a format the 'wav' package supports ---
       const config = RecordConfig(
         encoder: AudioEncoder.wav, 
-        sampleRate: 16000,         
-        numChannels: 1,
+        sampleRate: 16000, // AI Model requirement
+        numChannels: 1,    // AI Model requirement
       );
 
-      // 4. Start
+      final file = File(_currentPath!);
+      if (await file.exists()) await file.delete();
+
       await _audioRecorder.start(config, path: _currentPath!);
-      print("🎙️ Recording started at $_currentPath");
+      print("🎙️ Recording to: $_currentPath");
       
       _duration = Duration.zero;
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         _duration += const Duration(seconds: 1);
         _durationController.add(_duration);
-        _audioDataController.add([0.5, 0.5, 0.5, 0.5, 0.5]); 
+        _audioDataController.add([0.5, 0.5, 0.5, 0.5, 0.5]); // Dummy visualizer
       });
     } catch (e) {
-      print("❌ Error starting recording: $e");
+      print("Recorder Error: $e");
       throw e;
     }
   }
@@ -61,7 +57,6 @@ class AudioProcessingService {
   Future<File?> stopRecording() async {
     _timer?.cancel();
     final path = await _audioRecorder.stop();
-    print("🛑 Recording stopped. File saved at: $path");
     
     if (path != null) {
       return File(path);
@@ -71,12 +66,8 @@ class AudioProcessingService {
 
   Future<void> playLastRecording() async {
     if (_currentPath != null) {
-      try {
-        await _audioPlayer.setFilePath(_currentPath!);
-        await _audioPlayer.play();
-      } catch (e) {
-        print("Error playing audio: $e");
-      }
+      await _audioPlayer.setFilePath(_currentPath!);
+      await _audioPlayer.play();
     }
   }
 

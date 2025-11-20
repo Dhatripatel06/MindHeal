@@ -118,15 +118,16 @@ class _AdviceDialogState extends State<AdviceDialog>
     try {
       String advice;
       
-      // --- FRIEND LOGIC: Use user speech if available ---
+      // Check if we have user speech (Audio Mode)
       if (widget.userSpeech != null && widget.userSpeech!.isNotEmpty && !widget.userSpeech!.startsWith("(")) {
+         // Use "Friend" mode
          advice = await _adviserService.getConversationalAdvice(
           userSpeech: widget.userSpeech!,
           detectedEmotion: widget.emotionResult.emotion,
           language: _selectedLanguage,
         );
       } else {
-        // Default analysis logic
+        // Use "Analysis" mode
         advice = await _adviserService.getEmotionalAdvice(
           detectedEmotion: widget.emotionResult.emotion,
           confidence: widget.emotionResult.confidence,
@@ -505,14 +506,13 @@ class _AdviceDialogState extends State<AdviceDialog>
           const SizedBox(height: 16),
           Text(_advice!, style: TextStyle(fontSize: 16, height: 1.6, color: Colors.grey[800])),
           const SizedBox(height: 16),
-          // THIS IS THE METHOD YOU WERE MISSING
-          _buildSpeechControls(), 
+          _buildSpeechControls(), // Method now exists
         ],
       ),
     );
   }
 
-  // --- THIS METHOD WAS MISSING IN YOUR CODE ---
+  // --- THIS METHOD IS NOW INCLUDED ---
   Widget _buildSpeechControls() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -553,7 +553,6 @@ class _AdviceDialogState extends State<AdviceDialog>
     );
   }
 
-  // --- THIS HELPER WAS ALSO MISSING ---
   Widget _buildSpeechButton({
     required IconData icon,
     required VoidCallback? onPressed,
@@ -608,7 +607,7 @@ class _AdviceDialogState extends State<AdviceDialog>
     final texts = {
       'English': {'confidence': 'confidence', 'gettingAdvice': 'Thinking about what you said...', 'pleaseWait': 'Analyzing your tone and words...', 'adviceError': 'Unable to get advice', 'tryAgain': 'Try Again', 'personalizedAdvice': 'My Thoughts', 'newAdvice': 'New Advice', 'close': 'Close', 'readAloud': 'Read Aloud', 'play': 'Play', 'pause': 'Pause', 'resume': 'Resume', 'stop': 'Stop'},
       'हिंदी': {'confidence': 'विश्वास', 'gettingAdvice': 'आपकी बातों पर विचार कर रहा हूँ...', 'pleaseWait': 'आपके लहजे और शब्दों का विश्लेषण कर रहा हूँ...', 'adviceError': 'सलाह नहीं मिल पा रही है', 'tryAgain': 'फिर कोशिश करें', 'personalizedAdvice': 'मेरे विचार', 'newAdvice': 'नई सलाह', 'close': 'बंद करें', 'readAloud': 'जोर से पढ़ें', 'play': 'चलाएं', 'pause': 'रोकें', 'resume': 'जारी रखें', 'stop': 'बंद करें'},
-      'ગુજરાતી': {'confidence': 'વિશ્વાસ', 'gettingAdvice': 'તમે જે કહ્યું તેના પર વિચાર કરી રહ્યો છું...', 'pleaseWait': 'તમારા સ્વર અને શબ્દોનું વિશ્લેષણ કરી રહ્યો છું...', 'adviceError': 'સલાહ મેળવવામાં અસમર્થ', 'tryAgain': 'ફરી પ્રયાસ કરો', 'personalizedAdvice': 'મારા વિચારો', 'newAdvice': 'નવી સલાહ', 'close': 'બંધ કરો', 'readAloud': 'મોટેથી વાંચો', 'play': 'ચલાવો', 'pause': 'થોભાવો', 'resume': 'ચાલુ રાખો', 'stop': 'બંધ કરો'},
+      'ગુજરાતી': {'confidence': 'વિશ્વાસ', 'gettingAdvice': 'તમે જે કહ્યું તેના પર વિચાર કરી રહ્યો છું...', 'pleaseWait': 'તમારા સ્વર અને શબ્દોનું વિશ્લેષણ કરી રહ્યો છું...', 'adviceError': 'સલાહ મેળવવામાં અસમર્થ', 'try Again': 'ફરી પ્રયાસ કરો', 'personalizedAdvice': 'મારા વિચારો', 'newAdvice': 'નવી સલાહ', 'close': 'બંધ કરો', 'readAloud': 'મોટેથી વાંચો', 'play': 'ચલાવો', 'pause': 'થોભાવો', 'resume': 'ચાલુ રાખો', 'stop': 'બંધ કરો'},
     };
     return texts[_selectedLanguage]?[key] ?? texts['English']![key]!;
   }
@@ -617,7 +616,7 @@ class _AdviceDialogState extends State<AdviceDialog>
     final emotions = {
       'English': {'happy': 'Happy', 'sad': 'Sad', 'angry': 'Angry', 'fear': 'Fearful', 'surprise': 'Surprised', 'disgust': 'Disgusted', 'neutral': 'Neutral'},
       'हिंदी': {'happy': 'खुश', 'sad': 'उदास', 'angry': 'गुस्सैल', 'fear': 'डरा हुआ', 'surprise': 'आश्चर्यचकित', 'disgust': 'घृणित', 'neutral': 'तटस्थ'},
-      'ગુજરાતી': {'happy': 'ખુશ', 'sad': 'દુઃખી', 'angry': 'ગુસ્સે', 'fear': 'ડરેલો', 'surprise': 'આશ્ચર્યચકિત', 'disgust': 'અણગમતું', 'neutral': 'તટस्थ'},
+      'ગુજરાતી': {'happy': 'ખુશ', 'sad': 'દુઃખી', 'angry': 'ગુસ્સે', 'fear': 'ડરેલો', 'surprise': 'આશ્ચર્યચકિત', 'disgust': 'અણગમતું', 'neutral': 'તટસ્થ'},
     };
     return emotions[_selectedLanguage]?[emotion.toLowerCase()] ?? emotions['English']![emotion.toLowerCase()] ?? emotion;
   }
