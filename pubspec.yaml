@@ -95,6 +95,7 @@ dependencies:
   flutter_onnxruntime: ^1.5.2
   audio_session: 0.1.25
   audioplayers: ^6.5.0
+  flutter_sound: ^9.10.0
   
   # File Operations
   file_picker: ^10.3.3 # Added for file uploads

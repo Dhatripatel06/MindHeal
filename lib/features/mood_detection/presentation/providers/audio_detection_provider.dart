@@ -6,12 +6,14 @@ import 'package:mental_wellness_app/core/services/live_speech_transcription_serv
 import 'package:mental_wellness_app/core/services/translation_service.dart';
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
-import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart';
+// Remove AudioProcessingService import
+// import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart'; 
 import 'package:mental_wellness_app/features/mood_detection/data/services/wav2vec2_emotion_service.dart';
 
 class AudioDetectionProvider extends ChangeNotifier {
-  final AudioProcessingService _audioService = AudioProcessingService();
+  // New Architecture: Single Service
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService.instance;
+  
   final LiveSpeechTranscriptionService _sttService = LiveSpeechTranscriptionService();
   final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
@@ -52,18 +54,24 @@ class AudioDetectionProvider extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
+    // Initialize Services
+    await _emotionService.initialize();
     await _sttService.initialize();
+    
+    // Listen to STT
     _sttService.addListener(() {
       _liveTranscribedText = _sttService.liveWords;
       if (mounted) notifyListeners();
     });
 
-    _audioService.audioDataStream.listen((data) {
+    // Listen to Audio Visualizer Data
+    _emotionService.audioDataStream.listen((data) {
       _audioData = data;
       if (mounted) notifyListeners();
     });
     
-    _audioService.recordingDurationStream.listen((duration) {
+    // Listen to Recording Duration
+    _emotionService.recordingDurationStream.listen((duration) {
       _recordingDuration = duration;
       if (mounted) notifyListeners();
     });
@@ -80,15 +88,19 @@ class AudioDetectionProvider extends ChangeNotifier {
     if (_isRecording) return;
     clearResults();
     clearRecording();
-    _isRecording = true;
-    _isProcessing = false;
-    _lastError = null;
-    _liveTranscribedText = "";
-    notifyListeners();
     
     try {
-      await _audioService.startRecording();
+      // Start Recording via new Service
+      await _emotionService.startRecording();
+      
+      // Start STT
       try { await _sttService.startListening(currentLocaleId); } catch (e) { print("STT Warn: $e"); }
+
+      _isRecording = true;
+      _isProcessing = false;
+      _lastError = null;
+      _liveTranscribedText = "";
+      notifyListeners();
     } catch (e) {
       _lastError = "Could not start recording: $e";
       _isRecording = false;
@@ -104,7 +116,8 @@ class AudioDetectionProvider extends ChangeNotifier {
 
     File? audioFile;
     try {
-      audioFile = await _audioService.stopRecording();
+      // Stop Recording via new Service
+      audioFile = await _emotionService.stopRecording();
       await _sttService.stopListening();
       
       if (audioFile != null) {
@@ -148,7 +161,7 @@ class AudioDetectionProvider extends ChangeNotifier {
 
   Future<void> _runAnalysisPipeline(File audioFile, String userText) async {
     try {
-      // 1. Tone Analysis
+      // 1. Tone Analysis (Directly via Emotion Service)
       _lastResult = await _emotionService.analyzeAudio(audioFile);
       if (mounted) notifyListeners();
       
@@ -186,12 +199,16 @@ class AudioDetectionProvider extends ChangeNotifier {
     }
   }
 
+  // UI calls this to play; The UI page has its own AudioPlayer, 
+  // but if you need it here, you can use the path getter.
   Future<void> playLastRecording() async {
-    try { await _audioService.playLastRecording(); } catch (e) { _lastError = e.toString(); notifyListeners(); }
+    // Since UI (Page) handles playback using JustAudio via the filePath,
+    // we don't strictly need logic here unless we want to control it.
+    // The Page calls _togglePlayback using _audioFilePath.
   }
 
   void clearRecording() {
-    _audioService.clearRecording();
+    // Note: Service doesn't store state, so we just reset provider state
     _hasRecording = false;
     _lastRecordedFilePath = null;
     _audioData = [];
@@ -211,7 +228,7 @@ class AudioDetectionProvider extends ChangeNotifier {
   bool get mounted => _mounted;
   @override
   void dispose() {
-    _audioService.dispose();
+    _emotionService.dispose(); // Dispose the service resources
     _sttService.dispose();
     _mounted = false;
     super.dispose();
