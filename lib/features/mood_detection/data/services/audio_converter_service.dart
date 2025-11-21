@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:logger/logger.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 
 class AudioConverterService {
   static final AudioConverterService _instance = AudioConverterService._internal();
@@ -8,51 +10,64 @@ class AudioConverterService {
   AudioConverterService._internal();
 
   final Logger _logger = Logger();
+  final FlutterSoundHelper _soundHelper = FlutterSoundHelper();
 
-  /// Ensures the audio file is a valid PCM WAV.
-  /// Since FFmpeg is disabled, we strictly enforce WAV inputs.
   Future<File> ensureWavFormat(File inputFile) async {
+    // 1. Validate Input Existence and Size
+    if (!await inputFile.exists() || await inputFile.length() == 0) {
+      _logger.e("❌ Recording failed: File is empty or does not exist.");
+      throw Exception("Recording failed (Empty File). Please try again.");
+    }
+
     final String extension = p.extension(inputFile.path).toLowerCase();
 
-    // 1. Fast Check: Extension
-    if (extension == '.wav') {
-      _logger.i("✅ File has .wav extension: ${inputFile.path}");
+    // 2. Check Header (Reliable for missing extensions)
+    bool isWav = await _isWavHeader(inputFile);
+    if (isWav) {
+      _logger.i("✅ Verified WAV via Header: ${inputFile.path}");
       return inputFile;
     }
 
-    // 2. Robust Check: Magic Bytes (RIFF Header)
-    // This fixes "Unsupported format" errors when temp files lack extensions
-    if (await _isWavHeader(inputFile)) {
-      _logger.i("✅ Verified WAV via Header (RIFF): ${inputFile.path}");
+    _logger.i("🔄 Format '$extension' not standard WAV. Converting...");
+
+    // 3. Convert fallback (MP3/AAC -> WAV)
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final String outputName = '${DateTime.now().millisecondsSinceEpoch}_converted.wav';
+      final String outputPath = p.join(tempDir.path, outputName);
+      final File outputFile = File(outputPath);
+
+      if (await outputFile.exists()) await outputFile.delete();
+
+      await _soundHelper.convertFile(
+        inputFile.path,
+        Codec.pcm16WAV,
+        outputPath,
+      );
+
+      if (await outputFile.exists() && await outputFile.length() > 0) {
+        return outputFile;
+      } else {
+        throw Exception("Conversion output is empty.");
+      }
+    } catch (e) {
+      _logger.e("❌ Conversion Failed: $e");
+      // Attempt to return original as Hail Mary, but likely will fail analysis
       return inputFile;
     }
-
-    // 3. Failure
-    _logger.e("❌ Unsupported format: '$extension'");
-    throw Exception(
-      "Unsupported audio format ($extension). Please ensure you are recording or uploading a valid WAV file."
-    );
   }
 
-  /// Reads first 12 bytes to check for RIFF....WAVE header
   Future<bool> _isWavHeader(File file) async {
     try {
-      if (await file.length() < 44) return false; // Header is 44 bytes
-      
-      final RandomAccessFile raf = await file.open(mode: FileMode.read);
-      final List<int> header = await raf.read(12);
+      if (await file.length() < 44) return false;
+      final raf = await file.open(mode: FileMode.read);
+      final header = await raf.read(12);
       await raf.close();
       
-      if (header.length < 12) return false;
-      
-      // Check 'RIFF' (Bytes 0-3) in ASCII: 0x52, 0x49, 0x46, 0x46
-      // Check 'WAVE' (Bytes 8-11) in ASCII: 0x57, 0x41, 0x56, 0x45
-      bool hasRiff = header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46;
-      bool hasWave = header[8] == 0x57 && header[9] == 0x41 && header[10] == 0x56 && header[11] == 0x45;
-      
-      return hasRiff && hasWave;
+      // RIFF = 0x52, 0x49, 0x46, 0x46 | WAVE = 0x57, 0x41, 0x56, 0x45
+      return header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46 &&
+             header[8] == 0x57 && header[9] == 0x41 && header[10] == 0x56 && header[11] == 0x45;
     } catch (e) {
-      _logger.w("⚠️ Error reading file header: $e");
       return false;
     }
   }

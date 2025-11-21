@@ -6,14 +6,10 @@ import 'package:mental_wellness_app/core/services/live_speech_transcription_serv
 import 'package:mental_wellness_app/core/services/translation_service.dart';
 import 'package:mental_wellness_app/core/services/tts_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/models/emotion_result.dart';
-// Remove AudioProcessingService import
-// import 'package:mental_wellness_app/features/mood_detection/data/services/audio_processing_service.dart'; 
 import 'package:mental_wellness_app/features/mood_detection/data/services/wav2vec2_emotion_service.dart';
 
 class AudioDetectionProvider extends ChangeNotifier {
-  // New Architecture: Single Service
   final Wav2Vec2EmotionService _emotionService = Wav2Vec2EmotionService.instance;
-  
   final LiveSpeechTranscriptionService _sttService = LiveSpeechTranscriptionService();
   final TranslationService _translationService = TranslationService();
   final GeminiAdviserService _geminiService = GeminiAdviserService();
@@ -34,46 +30,37 @@ class AudioDetectionProvider extends ChangeNotifier {
   String? _lastRecordedFilePath; 
   String _selectedLanguage = 'English';
 
-  // Getters
   bool get isRecording => _isRecording;
   bool get isProcessing => _isProcessing;
-  bool get hasRecording => _hasRecording;
   EmotionResult? get lastResult => _lastResult;
   String? get friendlyResponse => _friendlyResponse;
-  String? get lastError => _lastError;
   List<double> get audioData => _audioData;
   Duration get recordingDuration => _recordingDuration;
   String get selectedLanguage => _selectedLanguage;
-  bool get isInitialized => _isInitialized;
   String get liveTranscribedText => _liveTranscribedText;
   String? get audioFilePath => _lastRecordedFilePath;
 
+  // Language Code mapping
   String get currentLangCode => _selectedLanguage == 'हिंदी' ? 'hi' : (_selectedLanguage == 'ગુજરાતી' ? 'gu' : 'en');
-  String get currentLocaleId => _selectedLanguage == 'हिंदी' ? 'hi-IN' : (_selectedLanguage == 'ગુજરાતી' ? 'gu-IN' : 'en-US');
+  String get currentLocaleId => _selectedLanguage == 'हिंदी' ? 'hi_IN' : (_selectedLanguage == 'ગુજરાતી' ? 'gu_IN' : 'en_US');
 
   Future<void> initialize() async {
     if (_isInitialized) return;
-
-    // Initialize Services
-    await _emotionService.initialize();
-    await _sttService.initialize();
     
-    // Listen to STT
+    // Listeners
     _sttService.addListener(() {
       _liveTranscribedText = _sttService.liveWords;
-      if (mounted) notifyListeners();
-    });
-
-    // Listen to Audio Visualizer Data
-    _emotionService.audioDataStream.listen((data) {
-      _audioData = data;
-      if (mounted) notifyListeners();
+      if (_mounted) notifyListeners();
     });
     
-    // Listen to Recording Duration
+    _emotionService.audioDataStream.listen((data) {
+      _audioData = data;
+      if (_mounted) notifyListeners();
+    });
+
     _emotionService.recordingDurationStream.listen((duration) {
       _recordingDuration = duration;
-      if (mounted) notifyListeners();
+      if (_mounted) notifyListeners();
     });
     
     _isInitialized = true;
@@ -86,153 +73,125 @@ class AudioDetectionProvider extends ChangeNotifier {
 
   Future<void> startRecording() async {
     if (_isRecording) return;
-    clearResults();
-    clearRecording();
+    _clearState();
+    _isRecording = true;
+    _isProcessing = false;
     
     try {
-      // Start Recording via new Service
       await _emotionService.startRecording();
-      
-      // Start STT
-      try { await _sttService.startListening(currentLocaleId); } catch (e) { print("STT Warn: $e"); }
-
-      _isRecording = true;
-      _isProcessing = false;
-      _lastError = null;
-      _liveTranscribedText = "";
+      try { 
+        await _sttService.startListening(currentLocaleId); 
+      } catch (e) { 
+        print("STT Warning: $e"); 
+      }
       notifyListeners();
     } catch (e) {
-      _lastError = "Could not start recording: $e";
+      _lastError = "Could not start: $e";
       _isRecording = false;
       notifyListeners();
     }
   }
 
-  Future<File?> stopRecording() async {
-    if (!_isRecording) return null;
+  Future<void> stopRecording() async {
+    if (!_isRecording) return;
     _isRecording = false;
     _isProcessing = true;
     notifyListeners();
 
-    File? audioFile;
     try {
-      // Stop Recording via new Service
-      audioFile = await _emotionService.stopRecording();
+      // 1. Stop Audio
+      File? audioFile = await _emotionService.stopRecording();
       await _sttService.stopListening();
       
       if (audioFile != null) {
         _hasRecording = true;
         _lastRecordedFilePath = audioFile.path;
         
-        String text = _sttService.finalText;
-        if (text.isEmpty) text = _liveTranscribedText;
-        if (text.isEmpty) text = "(No clear speech detected)";
-        _liveTranscribedText = text;
-        
-        await _runAnalysisPipeline(audioFile, text);
+        // 2. Get Text
+        String userText = _sttService.finalText;
+        if (userText.isEmpty) userText = _liveTranscribedText;
+        if (userText.isEmpty) userText = "(No speech detected)";
+        _liveTranscribedText = userText;
+
+        // 3. Run Full Pipeline
+        await _processFriendPipeline(audioFile, userText);
       }
     } catch (e) {
-      _lastError = "Error: $e";
+      _lastError = "Processing Error: $e";
     } finally {
-      if (mounted) { _isProcessing = false; notifyListeners(); }
+      _isProcessing = false;
+      if (_mounted) notifyListeners();
     }
-    return audioFile;
   }
 
+  // 🔥 THE REALITY LOGIC 🔥
+  Future<void> _processFriendPipeline(File audioFile, String originalText) async {
+    try {
+      // A. Detect Tone (Emotion) from Audio
+      _lastResult = await _emotionService.analyzeAudio(audioFile);
+      String detectedEmotion = _lastResult?.emotion ?? 'neutral';
+      
+      // B. Translate Input to English (if needed)
+      String englishText = originalText;
+      if (currentLangCode != 'en') {
+        englishText = await _translationService.translate(originalText, from: currentLangCode, to: 'en');
+      }
+
+      // C. Consult Gemini (The Friend)
+      // It sees: "I am tired" (Text) + "SAD" (Tone)
+      String englishAdvice = await _geminiService.getConversationalAdvice(
+        userSpeech: englishText,
+        detectedEmotion: detectedEmotion,
+        language: 'English', // Get English response first for stability
+      );
+
+      // D. Translate Response back to User Language
+      String finalResponse = englishAdvice;
+      if (currentLangCode != 'en') {
+        finalResponse = await _translationService.translate(englishAdvice, from: 'en', to: currentLangCode);
+      }
+
+      _friendlyResponse = finalResponse;
+      
+      // E. Speak it out
+      await _ttsService.speak(finalResponse, currentLocaleId);
+
+    } catch (e) {
+      print("Pipeline Failed: $e");
+      _lastError = "Could not analyze: $e";
+    }
+  }
+  
+  // Helper for file uploads
   Future<void> analyzeAudioFile(File audioFile) async {
-    clearResults();
-    clearRecording();
-    _isRecording = false;
+    _clearState();
     _isProcessing = true;
     _hasRecording = true;
     _lastRecordedFilePath = audioFile.path;
-    _liveTranscribedText = "(Uploaded Audio File)";
+    _liveTranscribedText = "(Uploaded File)";
     notifyListeners();
 
-    try {
-      _audioData = [];
-      await _runAnalysisPipeline(audioFile, "(User uploaded an audio file)");
-    } catch (e) {
-      _lastError = "Analysis failed: $e";
-    } finally {
-      if (mounted) { _isProcessing = false; notifyListeners(); }
-    }
+    await _processFriendPipeline(audioFile, "I uploaded an audio file.");
+    _isProcessing = false;
+    notifyListeners();
   }
 
-  Future<void> _runAnalysisPipeline(File audioFile, String userText) async {
-    try {
-      // 1. Tone Analysis (Directly via Emotion Service)
-      _lastResult = await _emotionService.analyzeAudio(audioFile);
-      if (mounted) notifyListeners();
-      
-      final emotion = _lastResult?.emotion ?? 'neutral';
-
-      // 2. Translate Input
-      String textForAI = userText;
-      if (currentLangCode != 'en' && !userText.startsWith("(")) {
-        textForAI = await _translationService.translate(userText, from: currentLangCode, to: 'en');
-      }
-
-      // 3. Get Friend Advice
-      String englishAdvice = await _geminiService.getConversationalAdvice(
-        userSpeech: textForAI,
-        detectedEmotion: emotion,
-        language: 'English',
-      );
-
-      // 4. Translate Output
-      String finalAdvice = englishAdvice;
-      if (currentLangCode != 'en') {
-        finalAdvice = await _translationService.translate(englishAdvice, from: 'en', to: currentLangCode);
-      }
-
-      _friendlyResponse = finalAdvice;
-      if (mounted) notifyListeners();
-
-      // 5. Speak
-      await _ttsService.speak(finalAdvice, currentLocaleId);
-
-    } catch (e) {
-      print("Pipeline Error: $e");
-      _lastError = "Friend feature unavailable: $e";
-      if (mounted) notifyListeners();
-    }
-  }
-
-  // UI calls this to play; The UI page has its own AudioPlayer, 
-  // but if you need it here, you can use the path getter.
-  Future<void> playLastRecording() async {
-    // Since UI (Page) handles playback using JustAudio via the filePath,
-    // we don't strictly need logic here unless we want to control it.
-    // The Page calls _togglePlayback using _audioFilePath.
-  }
-
-  void clearRecording() {
-    // Note: Service doesn't store state, so we just reset provider state
-    _hasRecording = false;
-    _lastRecordedFilePath = null;
-    _audioData = [];
-    _recordingDuration = Duration.zero;
-    _liveTranscribedText = "";
-    clearResults();
-  }
-
-  void clearResults() {
+  void _clearState() {
     _lastResult = null;
     _friendlyResponse = null;
     _lastError = null;
-    notifyListeners();
+    _audioData = [];
+    _recordingDuration = Duration.zero;
+    _liveTranscribedText = "";
   }
+  
+  void clearResults() => _clearState();
+  void clearRecording() => _clearState();
 
   bool _mounted = true;
-  bool get mounted => _mounted;
   @override
   void dispose() {
-    _emotionService.dispose(); // Dispose the service resources
-    _sttService.dispose();
     _mounted = false;
     super.dispose();
   }
-  @override
-  void notifyListeners() { if (mounted) super.notifyListeners(); }
 }
