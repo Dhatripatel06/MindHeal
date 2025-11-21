@@ -10,10 +10,9 @@ import 'package:wav/wav.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 
-// Top-level function for Isolate
+// Top-level function for Isolate (Must be outside class)
 List<double> _normalizeAudioTask(List<double> audio) {
   if (audio.isEmpty) return [];
-  
   double sum = 0.0;
   for (var x in audio) sum += x;
   double mean = sum / audio.length;
@@ -64,13 +63,14 @@ class Wav2Vec2EmotionService {
           .toList();
 
       _isInitialized = true;
-      print("✅ Wav2Vec2 Ready. Labels: $_labels");
+      print("✅ Wav2Vec2 Ready.");
     } catch (e) {
       print("❌ AI Init Error: $e");
     }
   }
 
   Future<void> startRecording() async {
+    if (_isRecording) return;
     try {
       if (await _recorder.hasPermission()) {
         final tempDir = await getTemporaryDirectory();
@@ -101,7 +101,6 @@ class Wav2Vec2EmotionService {
     try {
       final path = await _recorder.stop();
       if (path != null) {
-        print("🛑 Recording saved: $path");
         return File(path);
       }
       return null;
@@ -113,28 +112,19 @@ class Wav2Vec2EmotionService {
 
   void _startUpdates() {
     Duration duration = Duration.zero;
-    const tick = Duration(milliseconds: 100);
-    _timer?.cancel();
-    _timer = Timer.periodic(tick, (timer) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
       if (!_isRecording) {
         timer.cancel();
         return;
       }
-      duration += tick;
+      duration += const Duration(milliseconds: 100);
       _durationController.add(duration);
 
       try {
         final amp = await _recorder.getAmplitude();
         final double normalized = pow(10, (amp.current / 20)).toDouble().clamp(0.0, 1.0);
-        // Generate visual data
-        final random = Random();
-        final List<double> visualData = List.generate(20, (index) {
-          return (random.nextDouble() * 0.5 + 0.5) * normalized; 
-        });
-        _audioDataController.add(visualData);
-      } catch (e) {
-        // Ignore amplitude errors
-      }
+        _audioDataController.add(List.filled(20, normalized));
+      } catch (_) {}
     });
   }
 
@@ -147,16 +137,12 @@ class Wav2Vec2EmotionService {
     try {
       // 1. Format Check
       workingFile = await _converter.ensureWavFormat(audioFile);
-      print("📂 Parsing WAV: ${workingFile.path}");
       
       // 2. Parse WAV
       final wav = await Wav.readFile(workingFile.path);
       
       if (wav.channels.isEmpty) return EmotionResult.error("Empty audio file");
-      if (wav.samplesPerSecond != 16000) {
-        print("⚠️ Warning: Audio is ${wav.samplesPerSecond}Hz. Model expects 16000Hz.");
-      }
-
+      
       List<double> audioData = wav.channels[0].toList();
       if (audioData.length < 1000) return EmotionResult.error("Audio too short");
 
@@ -171,9 +157,6 @@ class Wav2Vec2EmotionService {
       final inputs = {inputName: inputTensor};
 
       final outputs = await _session!.run(inputs);
-      
-      // Note: Removed inputTensor.release() as it is not defined in this version.
-      
       if (outputs == null || outputs.isEmpty) throw Exception("No output from AI");
 
       // 5. Process Outputs
@@ -181,10 +164,7 @@ class Wav2Vec2EmotionService {
       final outputOrt = outputs[outputKey] as OrtValue?;
       
       final rawOutputList = await outputOrt!.asList();
-      // Flatten if needed, usually shape is [1, 4]
       final logits = (rawOutputList[0] as List).map((e) => (e as num).toDouble()).toList();
-
-      // Note: Removed outputOrt.release()
 
       // Softmax
       final expScores = logits.map((s) => exp(s)).toList();
@@ -211,13 +191,12 @@ class Wav2Vec2EmotionService {
         await workingFile.delete().catchError((_) {}); 
       }
 
-      final endTime = DateTime.now();
       return EmotionResult(
         emotion: _labels![maxIndex],
         confidence: maxScore,
         allEmotions: allEmotions,
         timestamp: DateTime.now(),
-        processingTimeMs: endTime.difference(startTime).inMilliseconds,
+        processingTimeMs: DateTime.now().difference(startTime).inMilliseconds,
       );
 
     } catch (e) {
@@ -231,6 +210,5 @@ class Wav2Vec2EmotionService {
     _audioDataController.close();
     _durationController.close();
     _recorder.dispose();
-    // _session?.release(); // Removed as per error
   }
 }

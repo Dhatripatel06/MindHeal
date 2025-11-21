@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:logger/logger.dart';
 
@@ -11,6 +10,7 @@ class AudioConverterService {
   final Logger _logger = Logger();
 
   /// Ensures the audio file is a valid PCM WAV.
+  /// Since FFmpeg is disabled, we strictly enforce WAV inputs.
   Future<File> ensureWavFormat(File inputFile) async {
     final String extension = p.extension(inputFile.path).toLowerCase();
 
@@ -21,47 +21,38 @@ class AudioConverterService {
     }
 
     // 2. Robust Check: Magic Bytes (RIFF Header)
-    // This handles cases where Android temp files might lack an extension
-    try {
-      if (await _isWavHeader(inputFile)) {
-        _logger.i("✅ Verified WAV by header (RIFF): ${inputFile.path}");
-        return inputFile;
-      }
-    } catch (e) {
-      _logger.w("⚠️ Could not verify file header: $e");
+    // This fixes "Unsupported format" errors when temp files lack extensions
+    if (await _isWavHeader(inputFile)) {
+      _logger.i("✅ Verified WAV via Header (RIFF): ${inputFile.path}");
+      return inputFile;
     }
 
-    // 3. Failure case
-    // Since we cannot use FFmpeg, we cannot convert MP3/AAC to WAV.
-    // We must inform the user to provide valid input.
+    // 3. Failure
     _logger.e("❌ Unsupported format: '$extension'");
     throw Exception(
-      "Unsupported audio format ($extension). Please upload a valid WAV file.\n"
-      "Automatic conversion is disabled to avoid FFmpeg dependency."
+      "Unsupported audio format ($extension). Please ensure you are recording or uploading a valid WAV file."
     );
   }
 
+  /// Reads first 12 bytes to check for RIFF....WAVE header
   Future<bool> _isWavHeader(File file) async {
     try {
-      final Stream<List<int>> stream = file.openRead(0, 12);
-      final List<int> header = await stream.first;
+      if (await file.length() < 44) return false; // Header is 44 bytes
+      
+      final RandomAccessFile raf = await file.open(mode: FileMode.read);
+      final List<int> header = await raf.read(12);
+      await raf.close();
+      
       if (header.length < 12) return false;
       
-      // Check for 'RIFF' (0-3) and 'WAVE' (8-11) in ASCII
-      // RIFF = 0x52, 0x49, 0x46, 0x46
-      // WAVE = 0x57, 0x41, 0x56, 0x45
-      bool hasRiff = header[0] == 0x52 && 
-                     header[1] == 0x49 && 
-                     header[2] == 0x46 && 
-                     header[3] == 0x46;
-                     
-      bool hasWave = header[8] == 0x57 && 
-                     header[9] == 0x41 && 
-                     header[10] == 0x56 && 
-                     header[11] == 0x45;
-                     
+      // Check 'RIFF' (Bytes 0-3) in ASCII: 0x52, 0x49, 0x46, 0x46
+      // Check 'WAVE' (Bytes 8-11) in ASCII: 0x57, 0x41, 0x56, 0x45
+      bool hasRiff = header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46;
+      bool hasWave = header[8] == 0x57 && header[9] == 0x41 && header[10] == 0x56 && header[11] == 0x45;
+      
       return hasRiff && hasWave;
     } catch (e) {
+      _logger.w("⚠️ Error reading file header: $e");
       return false;
     }
   }

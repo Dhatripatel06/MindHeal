@@ -18,47 +18,43 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Setup Global Error Handling (Replaces runZonedGuarded)
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    print("🔴 Flutter Error: ${details.exception}");
-  };
+  // 1. Handle Errors Globally without Zone mismatch
   PlatformDispatcher.instance.onError = (error, stack) {
     print("🔴 Async Error: $error");
     return true;
   };
 
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   try {
     await dotenv.load(fileName: ".env");
     await Firebase.initializeApp();
 
-    // 2. Fix Firebase App Check (Prevents 403 Errors)
+    // 2. Fix Firebase App Check (Debug Mode)
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.debug,
       appleProvider: AppleProvider.debug,
     );
 
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
   } catch (e) {
-    print("⚠️ Initialization Warning: $e");
+    print("⚠️ Init Warning: $e");
   }
 
-  // 3. Run App Immediately (Don't wait for AI models)
+  // 3. Launch App Immediately (Don't wait for AI)
   runApp(const MentalWellnessApp());
 
-  // 4. Initialize AI Models in Background (Prevents UI Freeze)
+  // 4. Initialize Heavy Services in Background
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _initializeBackgroundServices();
   });
 }
 
 Future<void> _initializeBackgroundServices() async {
-  print("⏳ initializing AI Services in Background...");
+  print("⏳ Initializing AI Models in Background...");
   
   // Initialize independently so one failure doesn't stop the other
   OnnxEmotionService.instance.initialize().then((_) {
