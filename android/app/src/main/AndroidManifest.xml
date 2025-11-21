@@ -41,7 +41,9 @@
     <application
         android:label="MindHeal"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:largeHeap="true"
+        android:requestLegacyExternalStorage="true">
         
         <uses-library android:name="com.google.android.wearable" android:required="false" />
         <!-- Main Activity -->
@@ -54,7 +56,8 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
-            android:enableOnBackInvokedCallback="true">
+            android:enableOnBackInvokedCallback="true"
+            >
 
             <!-- Standard launch intent filter -->
             <intent-filter android:autoVerify="true">

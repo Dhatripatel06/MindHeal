@@ -110,6 +110,7 @@ dependencies:
 
   sqflite: ^2.3.0
   flutter_launcher_icons: ^0.14.4
+  firebase_app_check: ^0.4.1+2
   # flutter_native_splash: ^2.2.16  # Removed - splash screens disabled
   
 
