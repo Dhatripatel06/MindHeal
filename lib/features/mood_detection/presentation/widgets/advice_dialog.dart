@@ -5,12 +5,12 @@ import '../../../../core/services/gemini_adviser_service.dart';
 
 class AdviceDialog extends StatefulWidget {
   final EmotionResult emotionResult;
-  final String? userSpeech; // ✅ Added parameter for compatibility
+  final String? userSpeech; // ✅ Added userSpeech to fix the named parameter error
 
   const AdviceDialog({
     super.key, 
     required this.emotionResult,
-    this.userSpeech, // ✅ Added to constructor
+    this.userSpeech, // ✅ Initialized in constructor
   });
 
   @override
@@ -45,6 +45,7 @@ class _AdviceDialogState extends State<AdviceDialog>
     _initializeTts();
 
     // Debug the service configuration immediately
+    // ✅ This now works because we added apiKeyPreview to the service
     print(
         '🔍 AdviceDialog initState: Service configured: ${_adviserService.isConfigured}');
     print(
@@ -179,13 +180,21 @@ class _AdviceDialogState extends State<AdviceDialog>
     try {
       print('🎯 AdviceDialog: Calling _adviserService.getEmotionalAdvice()');
       
-      // NOTE: Since we added userSpeech to the widget, we could pass it here 
-      // if the service supports it. For now we keep the call as is to match existing service.
-      final advice = await _adviserService.getEmotionalAdvice(
-        detectedEmotion: widget.emotionResult.emotion,
-        confidence: widget.emotionResult.confidence,
-        language: _selectedLanguage,
-      );
+      // Use userSpeech if available (Conversational), otherwise standard Emotional
+      String advice;
+      if (widget.userSpeech != null && widget.userSpeech!.isNotEmpty && !widget.userSpeech!.startsWith('(')) {
+         advice = await _adviserService.getConversationalAdvice(
+          userSpeech: widget.userSpeech!,
+          detectedEmotion: widget.emotionResult.emotion,
+          language: _selectedLanguage,
+        );
+      } else {
+         advice = await _adviserService.getEmotionalAdvice(
+          detectedEmotion: widget.emotionResult.emotion,
+          confidence: widget.emotionResult.confidence,
+          language: _selectedLanguage,
+        );
+      }
 
       print('🎯 AdviceDialog: Received advice length: ${advice.length}');
       print(
