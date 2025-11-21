@@ -1,3 +1,4 @@
+import 'dart:async'; // Import for StreamSubscription
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
   late Animation<double> _fadeAnimation;
   
   final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription? _playerSubscription; // Fix: Manage subscription
   bool _isPlaying = false;
 
   @override
@@ -35,15 +37,16 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AudioDetectionProvider>().initialize();
+      if (mounted) context.read<AudioDetectionProvider>().initialize();
     });
   }
 
   @override
   void dispose() {
+    _playerSubscription?.cancel(); // Fix: Cancel stream listener
+    _audioPlayer.dispose(); // Dispose player first
     _pulseController.dispose();
     _fadeController.dispose();
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -52,12 +55,18 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
     try {
       if (_isPlaying) {
         await _audioPlayer.pause();
-        setState(() => _isPlaying = false);
+        if (mounted) setState(() => _isPlaying = false);
       } else {
+        // Cancel old listener if exists
+        _playerSubscription?.cancel();
+        
         await _audioPlayer.setFilePath(filePath);
         await _audioPlayer.play();
-        setState(() => _isPlaying = true);
-        _audioPlayer.playerStateStream.listen((state) {
+        
+        if (mounted) setState(() => _isPlaying = true);
+        
+        // Fix: Assign to subscription variable
+        _playerSubscription = _audioPlayer.playerStateStream.listen((state) {
           if (state.processingState == ProcessingState.completed) {
             if (mounted) setState(() => _isPlaying = false);
           }
@@ -65,6 +74,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
       }
     } catch (e) {
       print("Playback error: $e");
+      if (mounted) setState(() => _isPlaying = false);
     }
   }
 
@@ -148,7 +158,7 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
             children: [
               const SizedBox(height: 80),
               
-              // 1. Visualizer (Takes less space when results are shown)
+              // 1. Visualizer
               AnimatedContainer(
                 duration: const Duration(milliseconds: 500),
                 height: provider.lastResult != null ? 180 : 300,
@@ -219,8 +229,9 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
             ]),
           ),
 
-        // Result Card (Matching Image Page Style)
-        _buildResultCard(provider.lastResult!),
+        // Result Card
+        if (provider.lastResult != null)
+          _buildResultCard(provider.lastResult!),
       ],
     );
   }
@@ -302,17 +313,18 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
     );
   }
 
-  // --- Logic Methods ---
-  
   Future<void> _startRecording() async => await context.read<AudioDetectionProvider>().startRecording();
   Future<void> _stopRecording() async => await context.read<AudioDetectionProvider>().stopRecording();
   
   Future<void> _pickAudioFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null) await context.read<AudioDetectionProvider>().analyzeAudioFile(File(result.files.single.path!));
+    if (result != null && result.files.single.path != null) {
+      await context.read<AudioDetectionProvider>().analyzeAudioFile(File(result.files.single.path!));
+    }
   }
 
   void _showDetailsSheet(EmotionResult result) {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -343,7 +355,10 @@ class _AudioMoodDetectionPageState extends State<AudioMoodDetectionPage> with Ti
   }
 
   void _getConversationalAdvice(BuildContext context) {
+    if (!mounted) return;
     final provider = context.read<AudioDetectionProvider>();
+    if (provider.lastResult == null) return;
+    
     showDialog(
       context: context,
       barrierDismissible: false,
