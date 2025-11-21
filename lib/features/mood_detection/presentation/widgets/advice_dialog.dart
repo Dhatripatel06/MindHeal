@@ -5,8 +5,13 @@ import '../../../../core/services/gemini_adviser_service.dart';
 
 class AdviceDialog extends StatefulWidget {
   final EmotionResult emotionResult;
+  final String? userSpeech; // ✅ Added parameter for compatibility
 
-  const AdviceDialog({super.key, required this.emotionResult});
+  const AdviceDialog({
+    super.key, 
+    required this.emotionResult,
+    this.userSpeech, // ✅ Added to constructor
+  });
 
   @override
   State<AdviceDialog> createState() => _AdviceDialogState();
@@ -173,6 +178,9 @@ class _AdviceDialogState extends State<AdviceDialog>
 
     try {
       print('🎯 AdviceDialog: Calling _adviserService.getEmotionalAdvice()');
+      
+      // NOTE: Since we added userSpeech to the widget, we could pass it here 
+      // if the service supports it. For now we keep the call as is to match existing service.
       final advice = await _adviserService.getEmotionalAdvice(
         detectedEmotion: widget.emotionResult.emotion,
         confidence: widget.emotionResult.confidence,

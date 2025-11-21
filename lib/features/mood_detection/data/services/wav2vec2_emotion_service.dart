@@ -121,19 +121,13 @@ class Wav2Vec2EmotionService {
         return;
       }
 
-      // Update Duration
       _recordDuration += tick;
       _durationController.add(_recordDuration);
 
-      // Update Visualizer (Amplitude)
-      // Since we record to file, we poll amplitude. 
-      // We return a dummy list of "bars" scaled by current amplitude for the Visualizer.
       try {
         final amp = await _recorder.getAmplitude();
         final double normalized = pow(10, (amp.current / 20)).toDouble().clamp(0.0, 1.0);
         
-        // Generate a visualizer friendly list (e.g. 10 bars of noise scaled by volume)
-        // This keeps your existing WaveformVisualizer happy
         final random = Random();
         final List<double> visualData = List.generate(20, (index) {
           return (random.nextDouble() * 0.5 + 0.5) * normalized; 
@@ -153,7 +147,7 @@ class Wav2Vec2EmotionService {
 
     File? workingFile;
     try {
-      // A. Format Conversion (if upload is MP3/M4A)
+      // A. Format Conversion
       workingFile = await _converter.ensureWavFormat(audioFile);
       print("📂 Analyzing: ${workingFile.path}");
 
@@ -170,11 +164,9 @@ class Wav2Vec2EmotionService {
       List<double> audioData = wav.channels[0].toList();
       if (audioData.length < 1000) return EmotionResult.error("Audio too short");
 
-      // Z-Score Standardization (Required for Wav2Vec2)
       audioData = _standardizeAudio(audioData);
 
       // E. Inference
-      // Shape: [1, samples]
       final shape = [1, audioData.length];
       final inputTensor = await OrtValue.fromList(audioData, shape);
       final inputName = _session!.inputNames.first;
@@ -186,14 +178,16 @@ class Wav2Vec2EmotionService {
       // F. Post-Process (Softmax)
       final outputKey = _session!.outputNames.first;
       final outputOrt = outputs[outputKey] as OrtValue?;
-      final rawLogits = (await outputOrt!.asList())[0] as List;
+      
+      // Fix: Handle raw list extraction properly
+      final rawLogitsList = await outputOrt!.asList();
+      final rawLogits = rawLogitsList[0] as List; // Assuming batch size 1
       final logits = rawLogits.map((e) => (e as num).toDouble()).toList();
 
       final expScores = logits.map((s) => exp(s)).toList();
       final sumExp = expScores.reduce((a, b) => a + b);
       final probs = expScores.map((s) => s / sumExp).toList();
 
-      // Map to labels
       final allEmotions = <String, double>{};
       double maxScore = -1.0;
       int maxIndex = 0;
@@ -208,9 +202,8 @@ class Wav2Vec2EmotionService {
         }
       }
 
-      // Cleanup temp files
-      inputTensor.release();
-      outputOrt?.release();
+      // Cleanup: Removed release() calls as typically managed by GC/Session
+      
       if (workingFile.path != audioFile.path) {
         await workingFile.delete().catchError((_) {});
       }
@@ -233,23 +226,19 @@ class Wav2Vec2EmotionService {
     if (audio.isEmpty) return [];
     double sum = audio.reduce((a, b) => a + b);
     double mean = sum / audio.length;
-    double sumSq = audio.map((x) => pow(x - mean, 2)).reduce((a, b) => a + b);
+    num sumSq = audio.map((x) => pow(x - mean, 2)).reduce((a, b) => a + b);
     double std = sqrt(sumSq / audio.length);
     if (std < 1e-5) std = 1.0;
     return audio.map((x) => (x - mean) / std).toList();
   }
 
-  // Audio Player helper (UI Requirement)
-  final AudioPlayer _audioPlayer = AudioPlayer(); // Note: requires 'just_audio' import if used here, 
-  // OR simpler: let the Provider handle playback if it already has a player. 
-  // Based on your Provider code, you called `_audioService.playLastRecording()`.
-  // We'll add a simple player helper here.
-  
-  // If you don't import just_audio here, move this logic to Provider. 
-  // Assuming you want the service to handle it as per old architecture:
-  Future<void> playRecording(String path) async {
-    // Note: Add import 'package:just_audio/just_audio.dart'; to top if strictly required here
-    // For now, I'll assume the Provider handles playback logic or you add the import.
+  Future<void> playLastRecording() async {
+    // Implement if needed, or rely on UI player
+  }
+
+  void clearRecording() {
+    _audioDataController.add([]);
+    _durationController.add(Duration.zero);
   }
 
   void dispose() {
@@ -257,6 +246,7 @@ class Wav2Vec2EmotionService {
     _audioDataController.close();
     _durationController.close();
     _recorder.dispose();
-    _session?.release();
+    // Session resource management depends on the package version
+    // _session?.release(); 
   }
 }

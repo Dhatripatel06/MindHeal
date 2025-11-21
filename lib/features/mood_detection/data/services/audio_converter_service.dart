@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:logger/logger.dart';
@@ -9,45 +8,25 @@ class AudioConverterService {
   factory AudioConverterService() => _instance;
   AudioConverterService._internal();
 
-  final FlutterSoundHelper _soundHelper = FlutterSoundHelper();
   final Logger _logger = Logger();
 
   /// Ensures the audio file is a valid PCM WAV.
-  /// If uploaded file is MP3/AAC/etc, it converts it.
+  /// Since we are avoiding FFmpeg, we strictly check for WAV files.
   Future<File> ensureWavFormat(File inputFile) async {
     final String extension = p.extension(inputFile.path).toLowerCase();
 
-    // 1. If likely already WAV, return as is (validation happens in analysis)
+    // 1. Check if it is a WAV file
     if (extension == '.wav') {
+      _logger.i("✅ File is already WAV: ${inputFile.path}");
       return inputFile;
     }
 
-    _logger.i("🔄 Converting $extension to WAV...");
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final String inputName = p.basenameWithoutExtension(inputFile.path);
-      // Create a temp file path with .wav extension
-      final String outputPath = p.join(tempDir.path, '${inputName}_converted.wav');
-
-      // 2. Convert using FlutterSound (uses native FFmpeg-like capability on OS)
-      await _soundHelper.convertFile(
-        inputFile.path,
-        Codec.pcm16WAV,
-        outputPath,
-      );
-
-      final outputFile = File(outputPath);
-      if (await outputFile.exists()) {
-        _logger.i("✅ Conversion successful: $outputPath");
-        return outputFile;
-      } else {
-        throw Exception("Conversion output file not found.");
-      }
-    } catch (e) {
-      _logger.e("❌ Audio Conversion Failed: $e");
-      // Fallback: Return original and let the WAV parser try (or fail gracefully later)
-      return inputFile;
-    }
+    // 2. If not WAV, we throw an error because pure Flutter cannot 
+    // decode MP3/AAC to PCM without FFmpeg or native platform channels.
+    _logger.e("❌ Unsupported format: $extension");
+    throw Exception(
+      "Unsupported audio format ($extension). Please upload a WAV file.\n"
+      "Automatic conversion requires FFmpeg which is disabled."
+    );
   }
 }
