@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/wav2vec2_emotion_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart';
 import 'app/app.dart';
@@ -14,36 +17,55 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
 
-  await Firebase.initializeApp();
+  // 1. Setup Global Error Handling (Replaces runZonedGuarded)
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    print("🔴 Flutter Error: ${details.exception}");
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    print("🔴 Async Error: $error");
+    return true;
+  };
 
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  try {
+    await dotenv.load(fileName: ".env");
+    await Firebase.initializeApp();
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+    // 2. Fix Firebase App Check (Prevents 403 Errors)
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.debug,
+    );
 
-  // This will now initialize your AI models
-  await initializeServices();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  } catch (e) {
+    print("⚠️ Initialization Warning: $e");
+  }
+
+  // 3. Run App Immediately (Don't wait for AI models)
   runApp(const MentalWellnessApp());
+
+  // 4. Initialize AI Models in Background (Prevents UI Freeze)
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _initializeBackgroundServices();
+  });
 }
 
-Future<void> initializeServices() async {
-  // Add initializations here
+Future<void> _initializeBackgroundServices() async {
+  print("⏳ initializing AI Services in Background...");
   
-  // Initialize Image Emotion Service (Singleton)
-  print("🚀 Initializing OnnxEmotionService...");
-  await OnnxEmotionService.instance.initialize();
-  print("✅ OnnxEmotionService Initialized.");
+  // Initialize independently so one failure doesn't stop the other
+  OnnxEmotionService.instance.initialize().then((_) {
+    print("✅ OnnxEmotionService Ready");
+  }).catchError((e) => print("❌ Onnx Init Error: $e"));
 
-  // Initialize Audio Emotion Service (Singleton)
-  print("🚀 Initializing Wav2Vec2EmotionService...");
-  await Wav2Vec2EmotionService.instance.initialize();
-  print("✅ Wav2Vec2EmotionService Initialized.");
-
-  // Other services like TtsService, TranslationService, etc.
-  // could also be initialized here if they are singletons.
+  Wav2Vec2EmotionService.instance.initialize().then((_) {
+    print("✅ Wav2Vec2EmotionService Ready");
+  }).catchError((e) => print("❌ Wav2Vec2 Init Error: $e"));
 }
