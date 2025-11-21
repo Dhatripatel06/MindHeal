@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:mental_wellness_app/features/mood_detection/data/services/wav2vec2_emotion_service.dart';
 import 'package:mental_wellness_app/features/mood_detection/onnx_emotion_detection/data/services/onnx_emotion_service.dart';
 import 'app/app.dart';
@@ -18,12 +17,6 @@ void main() async {
   await dotenv.load(fileName: ".env");
 
   await Firebase.initializeApp();
-
-  await FirebaseAppCheck.instance.activate(
-    // Use 'debug' provider for testing to stop console spam
-    androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.debug,
-  );
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 

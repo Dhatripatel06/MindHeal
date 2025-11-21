@@ -21,35 +21,47 @@ class AudioConverterService {
     }
 
     // 2. Robust Check: Magic Bytes (RIFF Header)
-    // Fixes "Unsupported format ''" when Android temp files have no extension
-    bool isWav = await _checkWavHeader(inputFile);
-    if (isWav) {
-      _logger.i("✅ Verified WAV via Header (RIFF): ${inputFile.path}");
-      return inputFile;
+    // This handles cases where Android temp files might lack an extension
+    try {
+      if (await _isWavHeader(inputFile)) {
+        _logger.i("✅ Verified WAV by header (RIFF): ${inputFile.path}");
+        return inputFile;
+      }
+    } catch (e) {
+      _logger.w("⚠️ Could not verify file header: $e");
     }
 
-    // 3. If not WAV, we throw error because FFmpeg is disabled per requirements.
-    _logger.e("❌ Unsupported format extension: '$extension' and invalid WAV header.");
+    // 3. Failure case
+    // Since we cannot use FFmpeg, we cannot convert MP3/AAC to WAV.
+    // We must inform the user to provide valid input.
+    _logger.e("❌ Unsupported format: '$extension'");
     throw Exception(
-      "Unsupported audio format. Please ensure you are recording or uploading a valid WAV file.\n"
-      "Note: MP3/AAC conversion requires external libraries."
+      "Unsupported audio format ($extension). Please upload a valid WAV file.\n"
+      "Automatic conversion is disabled to avoid FFmpeg dependency."
     );
   }
 
-  Future<bool> _checkWavHeader(File file) async {
+  Future<bool> _isWavHeader(File file) async {
     try {
-      // Read first 4 bytes
-      final Stream<List<int>> stream = file.openRead(0, 4);
+      final Stream<List<int>> stream = file.openRead(0, 12);
       final List<int> header = await stream.first;
-      if (header.length < 4) return false;
+      if (header.length < 12) return false;
       
-      // Check for 'RIFF' in ASCII: 0x52, 0x49, 0x46, 0x46
-      return header[0] == 0x52 && 
-             header[1] == 0x49 && 
-             header[2] == 0x46 && 
-             header[3] == 0x46;
+      // Check for 'RIFF' (0-3) and 'WAVE' (8-11) in ASCII
+      // RIFF = 0x52, 0x49, 0x46, 0x46
+      // WAVE = 0x57, 0x41, 0x56, 0x45
+      bool hasRiff = header[0] == 0x52 && 
+                     header[1] == 0x49 && 
+                     header[2] == 0x46 && 
+                     header[3] == 0x46;
+                     
+      bool hasWave = header[8] == 0x57 && 
+                     header[9] == 0x41 && 
+                     header[10] == 0x56 && 
+                     header[11] == 0x45;
+                     
+      return hasRiff && hasWave;
     } catch (e) {
-      _logger.w("⚠️ Error reading file header: $e");
       return false;
     }
   }
